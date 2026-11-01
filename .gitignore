@@ -8,3 +8,8 @@ coverage/
 *.pem
 *.key
 backups/
+
+# Local RIMBUX persistence database
+data/*.sqlite
+data/*.sqlite-*
+*.bak

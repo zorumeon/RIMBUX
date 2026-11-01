@@ -12,6 +12,7 @@ import { ScamDetectionEngine } from "../intelligence/scamDetector";
 import { NearTestnetClient } from "../near/nearClient";
 import { SandboxedSigningBoundary, SignedTransactionEnvelope } from "../near/signingBoundary";
 import { TamperEvidentAuditLogger } from "../security/auditLogger";
+import { RimbuxPersistence } from "../security/persistence";
 
 export interface PendingApprovalItem {
   intent: ExtractedTransactionIntent;
@@ -33,6 +34,8 @@ export interface AgentDependencies {
     SandboxedSigningBoundary,
     "signAuthorizedVaultIntent" | "getPublicMetadata" | "revokeKey"
   >;
+  auditPersistence?: RimbuxPersistence;
+  auditSecret?: string;
 }
 
 export class RimbuxAutonomousAgent {
@@ -48,6 +51,7 @@ export class RimbuxAutonomousAgent {
   public readonly auditLogger: TamperEvidentAuditLogger;
 
   private pendingApprovals: Map<string, PendingApprovalItem> = new Map();
+  private approvalInFlight: Set<string> = new Set();
   private transactionHistory: TransactionRecord[] = [];
 
   constructor(dependencies: AgentDependencies = {}) {
@@ -63,7 +67,10 @@ export class RimbuxAutonomousAgent {
         this.nearClient.vaultContractId,
         process.env.NEAR_AGENT_FUNCTION_CALL_PRIVATE_KEY
       );
-    this.auditLogger = new TamperEvidentAuditLogger();
+    this.auditLogger = new TamperEvidentAuditLogger(
+      dependencies.auditPersistence ?? new RimbuxPersistence(":memory:"),
+      dependencies.auditSecret
+    );
   }
 
   public parseNaturalLanguageInstruction(instruction: string): ExtractedTransactionIntent {
@@ -128,7 +135,7 @@ export class RimbuxAutonomousAgent {
     );
 
     if (evaluation.decision === "BLOCK") {
-      this.spendingController.releaseReservation(spendingCheck.reservationId);
+      await this.spendingController.releaseReservation(spendingCheck.reservationId);
       const record: TransactionRecord = {
         intentId: intent.intentId,
         timestamp: Date.now(),
@@ -191,8 +198,17 @@ export class RimbuxAutonomousAgent {
       intent,
       evaluation.authorizationToken,
       this.policyEngine
-    );
-    this.spendingController.commitReservation(spendingCheck.reservationId);
+    ).catch(async (error: unknown) => {
+      await this.spendingController.releaseReservation(spendingCheck.reservationId);
+      this.auditLogger.record(
+        "TRANSACTION_SIGNING_FAILED",
+        "HIGH",
+        { error: error instanceof Error ? error.message : "Unknown signing error" },
+        intent.intentId
+      );
+      throw error;
+    });
+    await this.spendingController.commitReservation(spendingCheck.reservationId);
 
     const record: TransactionRecord = {
       intentId: intent.intentId,
@@ -236,66 +252,103 @@ export class RimbuxAutonomousAgent {
   }
 
   public async approvePendingIntent(intentId: string, approve: boolean): Promise<AgentExecutionResponse> {
+    if (this.approvalInFlight.has(intentId)) {
+      throw new Error(`Approval for intent '${intentId}' is already in progress.`);
+    }
+
     const pending = this.pendingApprovals.get(intentId);
     if (!pending) {
       throw new Error(`Pending intent '${intentId}' was not found.`);
     }
-    const existingRecord = this.transactionHistory.find((r) => r.intentId === intentId);
 
-    if (!approve) {
-      this.pendingApprovals.delete(intentId);
-      this.spendingController.releaseReservation(pending.evaluation.spendingCheck.reservationId);
-      if (existingRecord) {
-        existingRecord.status = "BLOCKED_BY_POLICY";
-        existingRecord.policyDecision = "BLOCK";
-        existingRecord.reasons.push("HUMAN_OPERATOR_REJECTED: Human operator rejected the transaction request.");
-        existingRecord.verificationNote = "Rejected by the human operator; spending reservation released.";
+    this.approvalInFlight.add(intentId);
+
+    try {
+      const existingRecord = this.transactionHistory.find((r) => r.intentId === intentId);
+
+      if (!approve) {
+        this.pendingApprovals.delete(intentId);
+        await this.spendingController.releaseReservation(pending.evaluation.spendingCheck.reservationId);
+
+        if (existingRecord) {
+          existingRecord.status = "BLOCKED_BY_POLICY";
+          existingRecord.policyDecision = "BLOCK";
+          existingRecord.reasons.push("HUMAN_OPERATOR_REJECTED: Human operator rejected the transaction request.");
+          existingRecord.verificationNote = "Rejected by the human operator; spending reservation released.";
+        }
+
+        this.auditLogger.record("HUMAN_APPROVAL_DENIED", "WARNING", { intentId }, intentId);
+
+        return {
+          intent: pending.intent,
+          evaluation: pending.evaluation,
+          transactionRecord: existingRecord!,
+          agentExplanation: "The human operator rejected the transaction and released the reserved funds.",
+        };
       }
-      this.auditLogger.record("HUMAN_APPROVAL_DENIED", "WARNING", { intentId }, intentId);
+
+      const humanToken = this.policyEngine.issueAuthorizationToken(pending.intent, "HUMAN_OPERATOR");
+      pending.evaluation.authorizationToken = humanToken;
+
+      const signedEnvelope = await this.signingBoundary.signAuthorizedVaultIntent(
+        pending.intent,
+        humanToken,
+        this.policyEngine
+      ).catch(async (error: unknown) => {
+        await this.spendingController.releaseReservation(
+          pending.evaluation.spendingCheck.reservationId
+        );
+        this.pendingApprovals.delete(intentId);
+
+        if (existingRecord) {
+          existingRecord.status = "FAILED_VERIFICATION";
+          existingRecord.reasons.push("SIGNING_FAILED: The signing operation did not complete.");
+          existingRecord.verificationNote =
+            "Signing failed. No successful signing result was recorded; the spending reservation was released.";
+        }
+
+        this.auditLogger.record(
+          "APPROVED_TRANSACTION_SIGNING_FAILED",
+          "HIGH",
+          { error: error instanceof Error ? error.message : "Unknown signing error" },
+          intentId
+        );
+        throw error;
+      });
+
+      await this.spendingController.commitReservation(
+        pending.evaluation.spendingCheck.reservationId
+      );
+      this.pendingApprovals.delete(intentId);
+
+      if (existingRecord) {
+        existingRecord.status = signedEnvelope.lifecycleStatus;
+        existingRecord.policyDecision = "ALLOW";
+        existingRecord.txHash = signedEnvelope.txHash;
+        existingRecord.unsignedTxPayloadDigest = signedEnvelope.unsignedPayloadDigest;
+        existingRecord.signerPublicKey = signedEnvelope.signerPublicKey;
+        existingRecord.explorerUrl = signedEnvelope.explorerUrl;
+        existingRecord.reasons.push("HUMAN_OPERATOR_APPROVED: Explicitly approved by the human operator.");
+        existingRecord.verificationNote = signedEnvelope.verificationNote;
+      }
+
+      this.auditLogger.record(
+        "HUMAN_APPROVAL_GRANTED",
+        "INFO",
+        { txHash: signedEnvelope.txHash, intentId },
+        intentId
+      );
+
       return {
         intent: pending.intent,
         evaluation: pending.evaluation,
         transactionRecord: existingRecord!,
-        agentExplanation: "The human operator rejected the transaction and released the reserved funds.",
+        signedEnvelope,
+        agentExplanation: `The human operator approved the transaction; signed through the FunctionCall sandbox (${signedEnvelope.txHash}).`,
       };
+    } finally {
+      this.approvalInFlight.delete(intentId);
     }
-
-    const humanToken = this.policyEngine.issueAuthorizationToken(pending.intent, "HUMAN_OPERATOR");
-    pending.evaluation.authorizationToken = humanToken;
-
-    const signedEnvelope = await this.signingBoundary.signAuthorizedVaultIntent(
-      pending.intent,
-      humanToken,
-      this.policyEngine
-    );
-    this.spendingController.commitReservation(pending.evaluation.spendingCheck.reservationId);
-    this.pendingApprovals.delete(intentId);
-
-    if (existingRecord) {
-      existingRecord.status = signedEnvelope.lifecycleStatus;
-      existingRecord.policyDecision = "ALLOW";
-      existingRecord.txHash = signedEnvelope.txHash;
-      existingRecord.unsignedTxPayloadDigest = signedEnvelope.unsignedPayloadDigest;
-      existingRecord.signerPublicKey = signedEnvelope.signerPublicKey;
-      existingRecord.explorerUrl = signedEnvelope.explorerUrl;
-      existingRecord.reasons.push("HUMAN_OPERATOR_APPROVED: Explicitly approved by the human operator.");
-      existingRecord.verificationNote = signedEnvelope.verificationNote;
-    }
-
-    this.auditLogger.record(
-      "HUMAN_APPROVAL_GRANTED",
-      "INFO",
-      { txHash: signedEnvelope.txHash, intentId },
-      intentId
-    );
-
-    return {
-      intent: pending.intent,
-      evaluation: pending.evaluation,
-      transactionRecord: existingRecord!,
-      signedEnvelope,
-      agentExplanation: `The human operator approved the transaction; signed through the FunctionCall sandbox (${signedEnvelope.txHash}).`,
-    };
   }
 
   public getPendingApprovals(): PendingApprovalItem[] {

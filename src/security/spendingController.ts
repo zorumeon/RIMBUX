@@ -1,6 +1,9 @@
-// src/security/spendingController.ts
 import crypto from "crypto";
-import { ExtractedTransactionIntent, SpendingCheckResult, SpendingPolicyConfig } from "../types";
+import {
+  ExtractedTransactionIntent,
+  SpendingCheckResult,
+  SpendingPolicyConfig,
+} from "../types";
 
 interface LedgerEntry {
   reservationId: string;
@@ -14,7 +17,7 @@ interface LedgerEntry {
 export class SpendingController {
   private config: SpendingPolicyConfig;
   private ledger: LedgerEntry[] = [];
-  private mutexLocked: boolean = false;
+  private mutexLocked = false;
   private waitQueue: Array<() => void> = [];
 
   constructor(initialConfig?: Partial<SpendingPolicyConfig>) {
@@ -39,7 +42,11 @@ export class SpendingController {
         "attacker.testnet",
       ],
       requireAllowlistForContracts: true,
-      allowedContractMethods: ["execute_agent_payment", "ft_transfer", "storage_deposit"],
+      allowedContractMethods: [
+        "execute_agent_payment",
+        "ft_transfer",
+        "storage_deposit",
+      ],
       emergencyLockdown: false,
       ...initialConfig,
     };
@@ -50,7 +57,8 @@ export class SpendingController {
       this.mutexLocked = true;
       return;
     }
-    return new Promise((resolve) => {
+
+    await new Promise<void>((resolve) => {
       this.waitQueue.push(resolve);
     });
   }
@@ -68,12 +76,17 @@ export class SpendingController {
     return { ...this.config };
   }
 
-  public updateConfig(patch: Partial<SpendingPolicyConfig>): SpendingPolicyConfig {
+  public updateConfig(
+    patch: Partial<SpendingPolicyConfig>
+  ): SpendingPolicyConfig {
     this.config = { ...this.config, ...patch };
     return this.getConfig();
   }
 
   public resetLedger(): void {
+    if (this.mutexLocked || this.waitQueue.length > 0) {
+      throw new Error("LEDGER_BUSY: Cannot reset while ledger operations are active.");
+    }
     this.ledger = [];
   }
 
@@ -82,38 +95,44 @@ export class SpendingController {
     const dayAgo = now - 24 * 60 * 60 * 1000;
     const minuteAgo = now - 60 * 1000;
 
-    for (const entry of this.ledger) {
-      if (entry.status === "RESERVED" && now - entry.timestamp > 5 * 60 * 1000) {
-        entry.status = "RELEASED";
-      }
-    }
-
     const activeEntries = this.ledger.filter(
-      (e) => e.status === "COMMITTED" || e.status === "RESERVED"
+      (entry) =>
+        entry.status === "COMMITTED" || entry.status === "RESERVED"
     );
 
     const dailySpentNear = Number(
       activeEntries
-        .filter((e) => e.timestamp >= dayAgo)
-        .reduce((sum, e) => sum + e.amountNear, 0)
+        .filter((entry) => entry.timestamp >= dayAgo)
+        .reduce((sum, entry) => sum + entry.amountNear, 0)
         .toFixed(6)
     );
 
     const totalSpentNear = Number(
-      activeEntries.reduce((sum, e) => sum + e.amountNear, 0).toFixed(6)
+      activeEntries
+        .reduce((sum, entry) => sum + entry.amountNear, 0)
+        .toFixed(6)
     );
 
     const recipientSpentTodayNear = recipientId
       ? Number(
           activeEntries
-            .filter((e) => e.recipientId === recipientId && e.timestamp >= dayAgo)
-            .reduce((sum, e) => sum + e.amountNear, 0)
+            .filter(
+              (entry) =>
+                entry.recipientId === recipientId &&
+                entry.timestamp >= dayAgo
+            )
+            .reduce((sum, entry) => sum + entry.amountNear, 0)
             .toFixed(6)
         )
       : 0;
 
-    const recentTxCountLastMinute = activeEntries.filter((e) => e.timestamp >= minuteAgo).length;
-    const activeConcurrentLocks = activeEntries.filter((e) => e.status === "RESERVED").length;
+    const recentTxCountLastMinute = activeEntries.filter(
+      (entry) => entry.timestamp >= minuteAgo
+    ).length;
+
+    const activeConcurrentLocks = activeEntries.filter(
+      (entry) => entry.status === "RESERVED"
+    ).length;
 
     return {
       dailySpentNear,
@@ -124,23 +143,36 @@ export class SpendingController {
     };
   }
 
-  public async evaluateAndReserve(intent: ExtractedTransactionIntent): Promise<SpendingCheckResult> {
+  public async evaluateAndReserve(
+    intent: ExtractedTransactionIntent
+  ): Promise<SpendingCheckResult> {
     await this.acquireLock();
+
     try {
       const violations: string[] = [];
       let requiresHumanApproval = false;
       const snapshot = this.getMetricsSnapshot(intent.recipientId);
 
       if (this.config.emergencyLockdown) {
-        violations.push("EMERGENCY_LOCKDOWN: Wallet spending is globally locked by the human operator.");
+        violations.push(
+          "EMERGENCY_LOCKDOWN: Wallet spending is globally locked by the human operator."
+        );
       }
 
       if (!Number.isFinite(intent.amountNear) || intent.amountNear <= 0) {
-        violations.push(`INVALID_AMOUNT: Requested amount (${intent.amountNear} NEAR) must be greater than zero.`);
+        violations.push(
+          `INVALID_AMOUNT: Requested amount (${intent.amountNear} NEAR) must be greater than zero.`
+        );
       }
 
-      if (this.config.blockedDestinations.includes(intent.recipientId.toLowerCase())) {
-        violations.push(`BLOCKED_DESTINATION: Recipient '${intent.recipientId}' is on the explicit blocklist.`);
+      if (
+        this.config.blockedDestinations.includes(
+          intent.recipientId.toLowerCase()
+        )
+      ) {
+        violations.push(
+          `BLOCKED_DESTINATION: Recipient '${intent.recipientId}' is on the explicit blocklist.`
+        );
       }
 
       if (intent.amountNear > this.config.maxTransactionAmountNear) {
@@ -149,23 +181,30 @@ export class SpendingController {
         );
       }
 
-      if (snapshot.dailySpentNear + intent.amountNear > this.config.dailySpendingLimitNear) {
+      if (
+        snapshot.dailySpentNear + intent.amountNear >
+        this.config.dailySpendingLimitNear
+      ) {
         violations.push(
           `DAILY_LIMIT_EXCEEDED: Requested ${intent.amountNear} NEAR + ${snapshot.dailySpentNear} NEAR spent today exceeds 24h limit (${this.config.dailySpendingLimitNear} NEAR).`
         );
       }
 
-      if (snapshot.totalSpentNear + intent.amountNear > this.config.totalWalletSpendingCapNear) {
+      if (
+        snapshot.totalSpentNear + intent.amountNear >
+        this.config.totalWalletSpendingCapNear
+      ) {
         violations.push(
           `TOTAL_CAP_EXCEEDED: Requested ${intent.amountNear} NEAR + ${snapshot.totalSpentNear} NEAR total spent exceeds lifetime wallet cap (${this.config.totalWalletSpendingCapNear} NEAR).`
         );
       }
 
-      if (snapshot.recipientSpentTodayNear + intent.amountNear > this.config.perRecipientDailyLimitNear) {
+      if (
+        snapshot.recipientSpentTodayNear + intent.amountNear >
+        this.config.perRecipientDailyLimitNear
+      ) {
         violations.push(
-          `PER_RECIPIENT_LIMIT_EXCEEDED: Recipient '${intent.recipientId}' would receive ${
-            snapshot.recipientSpentTodayNear + intent.amountNear
-          } NEAR today, exceeding per-recipient limit (${this.config.perRecipientDailyLimitNear} NEAR).`
+          `PER_RECIPIENT_LIMIT_EXCEEDED: Recipient '${intent.recipientId}' would exceed the per-recipient daily limit (${this.config.perRecipientDailyLimitNear} NEAR).`
         );
       }
 
@@ -181,10 +220,14 @@ export class SpendingController {
         );
       }
 
-      const isAllowlisted = this.config.allowedDestinations.includes(intent.recipientId.toLowerCase());
+      const isAllowlisted = this.config.allowedDestinations.includes(
+        intent.recipientId.toLowerCase()
+      );
+
       if (!isAllowlisted) {
         requiresHumanApproval = true;
       }
+
       if (intent.amountNear >= this.config.humanApprovalThresholdNear) {
         requiresHumanApproval = true;
       }
@@ -199,6 +242,7 @@ export class SpendingController {
       }
 
       const reservationId = `rsv_${crypto.randomBytes(8).toString("hex")}`;
+
       this.ledger.push({
         reservationId,
         intentId: intent.intentId,
@@ -220,19 +264,39 @@ export class SpendingController {
     }
   }
 
-  public commitReservation(reservationId?: string): void {
+  public async commitReservation(reservationId?: string): Promise<void> {
     if (!reservationId) return;
-    const item = this.ledger.find((e) => e.reservationId === reservationId);
-    if (item && item.status === "RESERVED") {
-      item.status = "COMMITTED";
+
+    await this.acquireLock();
+
+    try {
+      const item = this.ledger.find(
+        (entry) => entry.reservationId === reservationId
+      );
+
+      if (item && item.status === "RESERVED") {
+        item.status = "COMMITTED";
+      }
+    } finally {
+      this.releaseLock();
     }
   }
 
-  public releaseReservation(reservationId?: string): void {
+  public async releaseReservation(reservationId?: string): Promise<void> {
     if (!reservationId) return;
-    const item = this.ledger.find((e) => e.reservationId === reservationId);
-    if (item && item.status === "RESERVED") {
-      item.status = "RELEASED";
+
+    await this.acquireLock();
+
+    try {
+      const item = this.ledger.find(
+        (entry) => entry.reservationId === reservationId
+      );
+
+      if (item && item.status === "RESERVED") {
+        item.status = "RELEASED";
+      }
+    } finally {
+      this.releaseLock();
     }
   }
 }

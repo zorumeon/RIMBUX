@@ -4,6 +4,7 @@ import cors from "cors";
 import path from "path";
 import dotenv from "dotenv";
 import { RimbuxAutonomousAgent } from "./agent/rimbuxAgent";
+import { RimbuxPersistence } from "./security/persistence";
 
 dotenv.config();
 
@@ -12,7 +13,8 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "../public")));
 
-export const rimbuxAgent = new RimbuxAutonomousAgent();
+const auditPersistence = new RimbuxPersistence();
+export const rimbuxAgent = new RimbuxAutonomousAgent({ auditPersistence });
 
 app.get("/api/status", async (_req, res) => {
   const keyMeta = rimbuxAgent.signingBoundary.getPublicMetadata();
@@ -38,6 +40,9 @@ app.get("/api/status", async (_req, res) => {
     pendingApprovals: rimbuxAgent.getPendingApprovals(),
     transactionHistory: rimbuxAgent.getTransactionHistory(),
     auditLogs: rimbuxAgent.auditLogger.getLogs(),
+    auditDatabase: {
+      healthy: auditPersistence.healthCheck(),
+    },
     auditIntegrity: rimbuxAgent.auditLogger.verifyChainIntegrity(),
   });
 });
@@ -217,7 +222,7 @@ app.post("/api/audit/run-suite", async (_req, res) => {
   try {
     const intent11 = testAgent.parseNaturalLanguageInstruction("Send 0.5 NEAR to alice.testnet");
     const expiredToken = testAgent.policyEngine.issueAuthorizationToken(intent11, "DETERMINISTIC_POLICY_GATE", -1000);
-    testAgent.signingBoundary.signAuthorizedVaultIntent(intent11, expiredToken, testAgent.policyEngine);
+    await testAgent.signingBoundary.signAuthorizedVaultIntent(intent11, expiredToken, testAgent.policyEngine);
   } catch (err: any) {
     s11Passed = err.message.includes("EXPIRED_AUTH_TOKEN");
     s11Detail = err.message;
@@ -236,7 +241,7 @@ app.post("/api/audit/run-suite", async (_req, res) => {
   let s12Detail = "";
   try {
     const intent12 = testAgent.parseNaturalLanguageInstruction("Send 0.5 NEAR to alice.testnet");
-    testAgent.signingBoundary.signAuthorizedVaultIntent(intent12, undefined, testAgent.policyEngine);
+    await testAgent.signingBoundary.signAuthorizedVaultIntent(intent12, undefined, testAgent.policyEngine);
   } catch (err: any) {
     s12Passed = err.message.includes("MISSING_AUTH_TOKEN");
     s12Detail = err.message;

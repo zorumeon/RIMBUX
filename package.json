@@ -5,15 +5,17 @@
   "scripts": {
     "dev": "ts-node src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "test": "node --test -r ts-node/register tests/adversarial.test.ts"
+    "test": "node --test -r ts-node/register tests/*.test.ts"
   },
   "dependencies": {
+    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "near-api-js": "^5.0.1"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",

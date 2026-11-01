@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { RimbuxPersistence } from "../src/security/persistence";
 import { SpendingController } from "../src/security/spendingController";
 import { ExtractedTransactionIntent } from "../src/types";
 
@@ -87,4 +91,36 @@ test("release removes a reservation from active spending and final states stay u
 
   assert.equal(metrics.totalSpentNear, 0);
   assert.equal(metrics.activeConcurrentLocks, 0);
+});
+
+
+test("committed spending survives database restart", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "rimbux-spending-"));
+  const databasePath = path.join(directory, "test.sqlite");
+
+  try {
+    const firstPersistence = new RimbuxPersistence(databasePath);
+    const firstController = new SpendingController(undefined, firstPersistence);
+
+    const result = await firstController.evaluateAndReserve(
+      makeIntent("restart-persistence-test", 1.5)
+    );
+
+    assert.equal(result.passed, true);
+    assert.ok(result.reservationId);
+
+    await firstController.commitReservation(result.reservationId);
+    firstPersistence.close();
+
+    const secondPersistence = new RimbuxPersistence(databasePath);
+    const secondController = new SpendingController(undefined, secondPersistence);
+
+    const metrics = secondController.getMetricsSnapshot();
+    assert.equal(metrics.totalSpentNear, 1.5);
+    assert.equal(metrics.activeConcurrentLocks, 0);
+
+    secondPersistence.close();
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });

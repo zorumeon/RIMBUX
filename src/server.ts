@@ -14,6 +14,15 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "../public")));
 
 const auditPersistence = new RimbuxPersistence();
+const quarantinedReservations =
+  auditPersistence.quarantineUnresolvedReservations();
+
+if (quarantinedReservations > 0) {
+  console.warn(
+    `[RECOVERY] Quarantined ${quarantinedReservations} unresolved spending reservation(s).`
+  );
+}
+
 export const rimbuxAgent = new RimbuxAutonomousAgent({ auditPersistence });
 
 app.get("/api/status", async (_req, res) => {
@@ -60,10 +69,13 @@ app.post("/api/agent/instruct", async (req, res) => {
   }
 });
 
-app.post("/api/approvals/:intentId", (req, res) => {
+app.post("/api/approvals/:intentId", async (req, res) => {
   try {
     const { approve } = req.body;
-    const result = rimbuxAgent.approvePendingIntent(req.params.intentId, Boolean(approve));
+    const result = await rimbuxAgent.approvePendingIntent(
+      req.params.intentId,
+      Boolean(approve)
+    );
     return res.json(result);
   } catch (err: any) {
     return res.status(400).json({ error: err.message });

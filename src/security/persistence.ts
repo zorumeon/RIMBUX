@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
+import { TransactionRecord } from "../types";
 
 export interface StoredAuditEvent {
   sequence: number;
@@ -66,6 +67,15 @@ export class RimbuxPersistence {
         prev_hash TEXT NOT NULL,
         entry_hash TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS transaction_history (
+        intent_id TEXT PRIMARY KEY,
+        timestamp INTEGER NOT NULL,
+        payload TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_transaction_history_timestamp
+      ON transaction_history(timestamp DESC);
     `);
   }
 
@@ -85,6 +95,90 @@ export class RimbuxPersistence {
         @intent_id, @details, @prev_hash, @entry_hash
       )
     `).run(entry);
+  }
+
+  public quarantineUnresolvedReservations(): number {
+    const result = this.db.prepare(`
+      UPDATE spending_reservations
+      SET status = 'QUARANTINED'
+      WHERE status = 'RESERVED'
+    `).run();
+
+    return result.changes;
+  }
+
+  public getSpendingReservations(): Array<{
+    reservationId: string;
+    intentId: string;
+    recipientId: string;
+    amountNear: number;
+    timestamp: number;
+    status: "RESERVED" | "COMMITTED" | "RELEASED" | "QUARANTINED";
+  }> {
+    return this.db.prepare(`
+      SELECT
+        reservation_id AS reservationId,
+        intent_id AS intentId,
+        recipient_id AS recipientId,
+        amount_near AS amountNear,
+        created_at AS timestamp,
+        status
+      FROM spending_reservations
+      WHERE status IN ('RESERVED', 'COMMITTED', 'RELEASED', 'QUARANTINED')
+      ORDER BY created_at ASC
+    `).all() as Array<{
+      reservationId: string;
+      intentId: string;
+      recipientId: string;
+      amountNear: number;
+      timestamp: number;
+      status: "RESERVED" | "COMMITTED" | "RELEASED" | "QUARANTINED";
+    }>;
+  }
+
+  public saveSpendingReservation(entry: {
+    reservationId: string;
+    intentId: string;
+    recipientId: string;
+    amountNear: number;
+    timestamp: number;
+    status: "RESERVED" | "COMMITTED" | "RELEASED" | "QUARANTINED";
+  }): void {
+    this.db.prepare(`
+      INSERT INTO spending_reservations (
+        reservation_id, intent_id, recipient_id,
+        amount_near, created_at, status
+      ) VALUES (
+        @reservationId, @intentId, @recipientId,
+        @amountNear, @timestamp, @status
+      )
+      ON CONFLICT(reservation_id) DO UPDATE SET
+        status = excluded.status
+    `).run(entry);
+  }
+
+  public getTransactionHistory(): TransactionRecord[] {
+    const rows = this.db.prepare(`
+      SELECT payload
+      FROM transaction_history
+      ORDER BY timestamp DESC
+    `).all() as Array<{ payload: string }>;
+
+    return rows.map((row) => JSON.parse(row.payload) as TransactionRecord);
+  }
+
+  public saveTransactionRecord(record: TransactionRecord): void {
+    this.db.prepare(`
+      INSERT INTO transaction_history (intent_id, timestamp, payload)
+      VALUES (@intentId, @timestamp, @payload)
+      ON CONFLICT(intent_id) DO UPDATE SET
+        timestamp = excluded.timestamp,
+        payload = excluded.payload
+    `).run({
+      intentId: record.intentId,
+      timestamp: record.timestamp,
+      payload: JSON.stringify(record),
+    });
   }
 
   public close(): void {

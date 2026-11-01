@@ -53,10 +53,18 @@ export class RimbuxAutonomousAgent {
   private pendingApprovals: Map<string, PendingApprovalItem> = new Map();
   private approvalInFlight: Set<string> = new Set();
   private transactionHistory: TransactionRecord[] = [];
+  private readonly auditPersistence?: RimbuxPersistence;
+
+  private persistTransactionRecord(record: TransactionRecord): void {
+    this.auditPersistence?.saveTransactionRecord(record);
+  }
 
   constructor(dependencies: AgentDependencies = {}) {
+    this.auditPersistence = dependencies.auditPersistence;
+    this.transactionHistory =
+      dependencies.auditPersistence?.getTransactionHistory() ?? [];
     this.nearClient = dependencies.nearClient ?? new NearTestnetClient();
-    this.spendingController = new SpendingController();
+    this.spendingController = new SpendingController(undefined, dependencies.auditPersistence);
     this.policyEngine = new DeterministicPolicyEngine();
     this.reputationEngine = new ReputationIntelligenceEngine(this.nearClient);
     this.scamDetector = new ScamDetectionEngine();
@@ -151,6 +159,7 @@ export class RimbuxAutonomousAgent {
         verificationNote: "Independently rejected by the Deterministic Security Gate before transaction construction.",
       };
       this.transactionHistory.unshift(record);
+      this.persistTransactionRecord(record);
       this.auditLogger.record("TRANSACTION_BLOCKED", "CRITICAL", { reasons: evaluation.reasons }, intent.intentId);
 
       return {
@@ -184,6 +193,7 @@ export class RimbuxAutonomousAgent {
           "Transaction remains unsigned (CONSTRUCTED_UNSIGNED); spending capacity is reserved pending human approval.",
       };
       this.transactionHistory.unshift(record);
+      this.persistTransactionRecord(record);
       this.auditLogger.record("APPROVAL_REQUIRED", "WARNING", { reasons: evaluation.reasons }, intent.intentId);
 
       return {
@@ -230,6 +240,7 @@ export class RimbuxAutonomousAgent {
     };
 
     this.transactionHistory.unshift(record);
+    this.persistTransactionRecord(record);
     this.auditLogger.record(
       "TRANSACTION_SIGNED_SANDBOX",
       "INFO",
@@ -275,6 +286,7 @@ export class RimbuxAutonomousAgent {
           existingRecord.policyDecision = "BLOCK";
           existingRecord.reasons.push("HUMAN_OPERATOR_REJECTED: Human operator rejected the transaction request.");
           existingRecord.verificationNote = "Rejected by the human operator; spending reservation released.";
+          this.persistTransactionRecord(existingRecord);
         }
 
         this.auditLogger.record("HUMAN_APPROVAL_DENIED", "WARNING", { intentId }, intentId);
@@ -305,6 +317,7 @@ export class RimbuxAutonomousAgent {
           existingRecord.reasons.push("SIGNING_FAILED: The signing operation did not complete.");
           existingRecord.verificationNote =
             "Signing failed. No successful signing result was recorded; the spending reservation was released.";
+          this.persistTransactionRecord(existingRecord);
         }
 
         this.auditLogger.record(
@@ -330,6 +343,7 @@ export class RimbuxAutonomousAgent {
         existingRecord.explorerUrl = signedEnvelope.explorerUrl;
         existingRecord.reasons.push("HUMAN_OPERATOR_APPROVED: Explicitly approved by the human operator.");
         existingRecord.verificationNote = signedEnvelope.verificationNote;
+        this.persistTransactionRecord(existingRecord);
       }
 
       this.auditLogger.record(

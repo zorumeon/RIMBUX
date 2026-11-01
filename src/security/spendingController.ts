@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { RimbuxPersistence } from "./persistence";
 import {
   ExtractedTransactionIntent,
   SpendingCheckResult,
@@ -11,7 +12,7 @@ interface LedgerEntry {
   recipientId: string;
   amountNear: number;
   timestamp: number;
-  status: "RESERVED" | "COMMITTED" | "RELEASED";
+  status: "RESERVED" | "COMMITTED" | "RELEASED" | "QUARANTINED";
 }
 
 export class SpendingController {
@@ -20,7 +21,11 @@ export class SpendingController {
   private mutexLocked = false;
   private waitQueue: Array<() => void> = [];
 
-  constructor(initialConfig?: Partial<SpendingPolicyConfig>) {
+  constructor(
+    initialConfig?: Partial<SpendingPolicyConfig>,
+    private readonly persistence?: RimbuxPersistence
+  ) {
+    this.ledger = persistence?.getSpendingReservations() ?? [];
     this.config = {
       maxTransactionAmountNear: 5.0,
       dailySpendingLimitNear: 15.0,
@@ -97,7 +102,7 @@ export class SpendingController {
 
     const activeEntries = this.ledger.filter(
       (entry) =>
-        entry.status === "COMMITTED" || entry.status === "RESERVED"
+        entry.status === "COMMITTED" || entry.status === "RESERVED" || entry.status === "QUARANTINED"
     );
 
     const dailySpentNear = Number(
@@ -131,7 +136,7 @@ export class SpendingController {
     ).length;
 
     const activeConcurrentLocks = activeEntries.filter(
-      (entry) => entry.status === "RESERVED"
+      (entry) => (entry.status === "RESERVED" || entry.status === "QUARANTINED")
     ).length;
 
     return {
@@ -243,14 +248,17 @@ export class SpendingController {
 
       const reservationId = `rsv_${crypto.randomBytes(8).toString("hex")}`;
 
-      this.ledger.push({
+      const entry: LedgerEntry = {
         reservationId,
         intentId: intent.intentId,
         recipientId: intent.recipientId,
         amountNear: intent.amountNear,
         timestamp: Date.now(),
         status: "RESERVED",
-      });
+      };
+
+      this.persistence?.saveSpendingReservation(entry);
+      this.ledger.push(entry);
 
       return {
         passed: true,
@@ -275,6 +283,10 @@ export class SpendingController {
       );
 
       if (item && item.status === "RESERVED") {
+        this.persistence?.saveSpendingReservation({
+          ...item,
+          status: "COMMITTED",
+        });
         item.status = "COMMITTED";
       }
     } finally {
@@ -293,6 +305,10 @@ export class SpendingController {
       );
 
       if (item && item.status === "RESERVED") {
+        this.persistence?.saveSpendingReservation({
+          ...item,
+          status: "RELEASED",
+        });
         item.status = "RELEASED";
       }
     } finally {

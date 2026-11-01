@@ -1,0 +1,178 @@
+// src/near/nearClient.ts
+import { utils } from "near-api-js";
+
+export interface AccountInspectionResult {
+  accountId: string;
+  rpcReachable: boolean;
+  exists: boolean;
+  balanceNear: string;
+  storageUsage: number;
+  hasContract: boolean;
+  codeHash?: string;
+}
+
+export class NearTestnetClient {
+  public readonly rpcUrl: string;
+  public readonly networkId: string;
+  public readonly vaultContractId: string;
+  public readonly agentAccountId: string;
+
+  constructor() {
+    this.networkId = process.env.NEAR_NETWORK_ID || "testnet";
+    this.rpcUrl = process.env.NEAR_RPC_URL || "https://rpc.testnet.near.org";
+    this.vaultContractId = process.env.NEAR_VAULT_CONTRACT_ID || "rimbux-vault.testnet";
+    this.agentAccountId = process.env.NEAR_AGENT_ACCOUNT_ID || "agent-operator.testnet";
+  }
+
+  public static nearToYocto(amountNear: number): string {
+    const clean = amountNear.toFixed(6);
+    return utils.format.parseNearAmount(clean) || "0";
+  }
+
+  public static yoctoToNear(yocto: string): string {
+    return utils.format.formatNearAmount(yocto, 4);
+  }
+
+  public async inspectAccount(accountId: string): Promise<AccountInspectionResult> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+
+    try {
+      const response = await fetch(this.rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "rimbux-inspect",
+          method: "query",
+          params: {
+            request_type: "view_account",
+            finality: "final",
+            account_id: accountId,
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+      const data = (await response.json()) as any;
+
+      if (data.error) {
+        return {
+          accountId,
+          rpcReachable: true,
+          exists: false,
+          balanceNear: "0",
+          storageUsage: 0,
+          hasContract: false,
+        };
+      }
+
+      const result = data.result;
+      const emptyCodeHash = "11111111111111111111111111111111";
+      return {
+        accountId,
+        rpcReachable: true,
+        exists: true,
+        balanceNear: NearTestnetClient.yoctoToNear(result.amount),
+        storageUsage: result.storage_usage,
+        hasContract: Boolean(result.code_hash && result.code_hash !== emptyCodeHash),
+        codeHash: result.code_hash,
+      };
+    } catch {
+      clearTimeout(timeout);
+      return {
+        accountId,
+        rpcReachable: false,
+        exists: false,
+        balanceNear: "0",
+        storageUsage: 0,
+        hasContract: false,
+      };
+    }
+  }
+
+  public async inspectAccessKeyPermissions(
+    accountId: string,
+    publicKey: string
+  ): Promise<{
+    verifiedOnChain: boolean;
+    permissionType: "FunctionCall" | "FullAccess" | "SimulatedFunctionCall";
+    receiverId: string;
+    methodNames: string[];
+    allowanceNear: string;
+  }> {
+    try {
+      const response = await fetch(this.rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "rimbux-key-check",
+          method: "query",
+          params: {
+            request_type: "view_access_key",
+            finality: "final",
+            account_id: accountId,
+            public_key: publicKey,
+          },
+        }),
+      });
+      const data = (await response.json()) as any;
+      if (data.result && data.result.permission && data.result.permission.FunctionCall) {
+        const fc = data.result.permission.FunctionCall;
+        return {
+          verifiedOnChain: true,
+          permissionType: "FunctionCall",
+          receiverId: fc.receiver_id,
+          methodNames: fc.method_names,
+          allowanceNear: fc.allowance ? NearTestnetClient.yoctoToNear(fc.allowance) : "Unlimited Gas",
+        };
+      }
+    } catch {
+      // Fallback to the local sandbox descriptor when the ephemeral key has not been registered on-chain
+    }
+
+    return {
+      verifiedOnChain: false,
+      permissionType: "SimulatedFunctionCall",
+      receiverId: this.vaultContractId,
+      methodNames: ["execute_agent_payment"],
+      allowanceNear: "0.25",
+    };
+  }
+
+  public async verifyTransactionStatus(txHash: string, senderAccountId: string): Promise<{
+    confirmed: boolean;
+    statusSummary: string;
+  }> {
+    try {
+      const response = await fetch(this.rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "rimbux-tx-status",
+          method: "tx",
+          params: [txHash, senderAccountId],
+        }),
+      });
+      const data = (await response.json()) as any;
+      if (data.result && data.result.status && "SuccessValue" in data.result.status) {
+        return {
+          confirmed: true,
+          statusSummary: "CONFIRMED_ONCHAIN: Transaction execution verified on a NEAR Testnet block.",
+        };
+      }
+      return {
+        confirmed: false,
+        statusSummary: "Transaction not found or failed on the NEAR Testnet RPC.",
+      };
+    } catch {
+      return {
+        confirmed: false,
+        statusSummary: "Unable to reach the NEAR Testnet RPC to verify transaction status.",
+      };
+    }
+  }
+}

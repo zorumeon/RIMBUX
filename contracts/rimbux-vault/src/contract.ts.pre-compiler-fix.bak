@@ -1,0 +1,143 @@
+// contracts/rimbux-vault/src/contract.ts
+import { NearBindgen, near, call, view, initialize, NearPromise, UnorderedMap } from "near-sdk-js";
+
+const YOCTO_PER_NEAR = BigInt("1000000000000000000000000");
+const DAY_NS = BigInt(24 * 60 * 60) * BigInt("1000000000");
+
+@NearBindgen({ requireInit: true })
+export class RimbuxVaultContract {
+  ownerId: string = "";
+  authorizedAgentKey: string = "";
+  paused: boolean = false;
+
+  maxPerTxYocto: string = (BigInt(5) * YOCTO_PER_NEAR).toString();
+  dailyLimitYocto: string = (BigInt(15) * YOCTO_PER_NEAR).toString();
+  currentDaySpendYocto: string = "0";
+  dayWindowStartNs: string = "0";
+
+  allowedRecipients: UnorderedMap<boolean> = new UnorderedMap<boolean>("a");
+  blockedRecipients: UnorderedMap<boolean> = new UnorderedMap<boolean>("b");
+  usedNonces: UnorderedMap<boolean> = new UnorderedMap<boolean>("n");
+
+  @initialize({ privateFunction: true })
+  init({
+    ownerId,
+    authorizedAgentKey,
+    maxPerTxNear,
+    dailyLimitNear,
+  }: {
+    ownerId: string;
+    authorizedAgentKey: string;
+    maxPerTxNear: number;
+    dailyLimitNear: number;
+  }) {
+    this.ownerId = ownerId;
+    this.authorizedAgentKey = authorizedAgentKey;
+    this.maxPerTxYocto = ((BigInt(Math.floor(maxPerTxNear * 1000)) * YOCTO_PER_NEAR) / BigInt(1000)).toString();
+    this.dailyLimitYocto = ((BigInt(Math.floor(dailyLimitNear * 1000)) * YOCTO_PER_NEAR) / BigInt(1000)).toString();
+    this.dayWindowStartNs = near.blockTimestamp().toString();
+  }
+
+  private assertOwner() {
+    if (near.predecessorAccountId() !== this.ownerId) {
+      near.panicUtf8("RIMBUX_VAULT: Only the human owner is authorized to modify security parameters.");
+    }
+  }
+
+  @call({})
+  set_pause({ paused }: { paused: boolean }) {
+    this.assertOwner();
+    this.paused = paused;
+  }
+
+  @call({})
+  update_recipient_policy({ accountId, allowed, blocked }: { accountId: string; allowed: boolean; blocked: boolean }) {
+    this.assertOwner();
+    this.allowedRecipients.set(accountId, allowed);
+    this.blockedRecipients.set(accountId, blocked);
+  }
+
+  @call({})
+  execute_agent_payment({
+    recipientId,
+    amountYocto,
+    intentNonce,
+    purposeDigest,
+  }: {
+    recipientId: string;
+    amountYocto: string;
+    intentNonce: string;
+    purposeDigest: string;
+  }): NearPromise {
+    if (this.paused) {
+      near.panicUtf8("RIMBUX_VAULT: Vault is currently paused under emergency lockdown.");
+    }
+
+    const signerPk = near.signerAccountPk();
+    if (!this.authorizedAgentKey || signerPk !== this.authorizedAgentKey) {
+      near.panicUtf8("RIMBUX_VAULT: Missing or unauthorized agent FunctionCall key.");
+    }
+
+    if (this.usedNonces.get(intentNonce)) {
+      near.panicUtf8("RIMBUX_VAULT: Replay attack detected — intentNonce has already been executed.");
+    }
+
+    if (this.blockedRecipients.get(recipientId) === true) {
+      near.panicUtf8(`RIMBUX_VAULT: Destination ${recipientId} is explicitly blocked on-chain.`);
+    }
+
+    if (this.allowedRecipients.get(recipientId) !== true) {
+      near.panicUtf8(`RIMBUX_VAULT: Destination ${recipientId} is not approved by the owner.`);
+    }
+
+    const amount = BigInt(amountYocto);
+    if (amount <= BigInt(0)) {
+      near.panicUtf8("RIMBUX_VAULT: Transfer amount must be greater than zero.");
+    }
+
+    if (amount > BigInt(this.maxPerTxYocto)) {
+      near.panicUtf8("RIMBUX_VAULT: Amount exceeds on-chain maximum per-transaction cap.");
+    }
+
+    const nowNs = near.blockTimestamp();
+    const windowStart = BigInt(this.dayWindowStartNs);
+    let spentToday = BigInt(this.currentDaySpendYocto);
+
+    if (nowNs - windowStart >= DAY_NS) {
+      spentToday = BigInt(0);
+      this.dayWindowStartNs = nowNs.toString();
+    }
+
+    if (spentToday + amount > BigInt(this.dailyLimitYocto)) {
+      near.panicUtf8("RIMBUX_VAULT: Amount exceeds on-chain rolling 24-hour spending limit.");
+    }
+
+    this.usedNonces.set(intentNonce, true);
+    this.currentDaySpendYocto = (spentToday + amount).toString();
+
+    near.log(
+      JSON.stringify({
+        event: "RIMBUX_AGENT_PAYMENT_EXECUTED",
+        recipientId,
+        amountYocto,
+        intentNonce,
+        purposeDigest,
+      })
+    );
+
+    return NearPromise.new(recipientId).transfer(amount);
+  }
+
+  @view({})
+  get_vault_status() {
+    return {
+      ownerId: this.ownerId,
+      authorizedAgentKey: this.authorizedAgentKey,
+      paused: this.paused,
+      maxPerTxYocto: this.maxPerTxYocto,
+      dailyLimitYocto: this.dailyLimitYocto,
+      currentDaySpendYocto: this.currentDaySpendYocto,
+      dayWindowStartNs: this.dayWindowStartNs,
+    };
+  }
+}

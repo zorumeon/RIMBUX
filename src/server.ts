@@ -109,7 +109,7 @@ app.get("/api/reputation/:accountId", async (req, res) => {
 });
 
 app.post("/api/audit/run-suite", async (_req, res) => {
-  const testAgent = new RimbuxAutonomousAgent();
+  const testAgent = new RimbuxAutonomousAgent({ broadcastEnabled: false });
   const results: Array<{ id: number; scenario: string; expected: string; actual: string; passed: boolean; detail: string }> = [];
 
   // 1. Normal payment

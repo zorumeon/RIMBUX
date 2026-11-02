@@ -73,6 +73,7 @@ export class SandboxedSigningBoundary {
   private readonly agentAccountId: string;
   private readonly vaultContractId: string;
   private readonly networkId: string;
+  private readonly broadcastEnabled: boolean;
   private readonly allowedMethods = ["execute_agent_payment"];
   private readonly gasAllowanceNear = 0.25;
   private signingQueue: Promise<void> = Promise.resolve();
@@ -83,7 +84,8 @@ export class SandboxedSigningBoundary {
     privateKeyEnv?: string,
     provider?: Pick<Provider, "query" | "block"> & {
       gasPrice: (blockId: any) => ReturnType<Provider["gasPrice"]>;
-    }
+    },
+    broadcastEnabled = process.env.RIMBUX_BROADCAST === "true"
   ) {
     if (!privateKeyEnv || !privateKeyEnv.startsWith("ed25519:")) {
       throw new Error("SIGNING_KEY_MISSING: A valid NEAR FunctionCall private key is required.");
@@ -96,6 +98,7 @@ export class SandboxedSigningBoundary {
     this.agentAccountId = agentAccountId;
     this.vaultContractId = vaultContractId;
     this.networkId = process.env.NEAR_NETWORK_ID || "testnet";
+    this.broadcastEnabled = broadcastEnabled;
     this.keyPair = KeyPair.fromString(privateKeyEnv as any);
     this.provider = provider || new JsonRpcProvider({
       url: process.env.NEAR_RPC_URL || "https://rpc.testnet.near.org",

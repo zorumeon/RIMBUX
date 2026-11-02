@@ -36,6 +36,7 @@ export interface AgentDependencies {
   >;
   auditPersistence?: RimbuxPersistence;
   auditSecret?: string;
+  broadcastEnabled?: boolean;
 }
 
 export class RimbuxAutonomousAgent {
@@ -73,7 +74,9 @@ export class RimbuxAutonomousAgent {
       new SandboxedSigningBoundary(
         this.nearClient.agentAccountId,
         this.nearClient.vaultContractId,
-        process.env.NEAR_AGENT_FUNCTION_CALL_PRIVATE_KEY
+        process.env.NEAR_AGENT_FUNCTION_CALL_PRIVATE_KEY,
+        undefined,
+        dependencies.broadcastEnabled
       );
     this.auditLogger = new TamperEvidentAuditLogger(
       dependencies.auditPersistence ?? new RimbuxPersistence(":memory:"),

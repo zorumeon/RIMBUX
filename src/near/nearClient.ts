@@ -20,8 +20,8 @@ export class NearTestnetClient {
   constructor() {
     this.networkId = process.env.NEAR_NETWORK_ID || "testnet";
     this.rpcUrl = process.env.NEAR_RPC_URL || "https://rpc.testnet.near.org";
-    this.vaultContractId = process.env.NEAR_VAULT_CONTRACT_ID || "rimbux-vault.testnet";
-    this.agentAccountId = process.env.NEAR_AGENT_ACCOUNT_ID || "agent-operator.testnet";
+    this.vaultContractId = process.env.NEAR_VAULT_CONTRACT_ID || "vault.rimbux.testnet";
+    this.agentAccountId = process.env.NEAR_AGENT_ACCOUNT_ID || "agent.rimbux.testnet";
   }
 
   public static nearToYocto(amountNear: number): string {
@@ -97,10 +97,13 @@ export class NearTestnetClient {
     publicKey: string
   ): Promise<{
     verifiedOnChain: boolean;
-    permissionType: "FunctionCall" | "FullAccess" | "SimulatedFunctionCall";
-    receiverId: string;
+    verificationStatus: "VERIFIED" | "NOT_FOUND" | "PERMISSION_MISMATCH" | "RPC_UNAVAILABLE";
+    rpcReachable: boolean;
+    permissionType: "FunctionCall" | "FullAccess" | "NotFound" | "Unknown";
+    receiverId: string | null;
     methodNames: string[];
-    allowanceNear: string;
+    allowanceNear: string | null;
+    error?: string;
   }> {
     try {
       const response = await fetch(this.rpcUrl, {
@@ -118,28 +121,145 @@ export class NearTestnetClient {
           },
         }),
       });
-      const data = (await response.json()) as any;
-      if (data.result && data.result.permission && data.result.permission.FunctionCall) {
-        const fc = data.result.permission.FunctionCall;
+
+      if (!response.ok) {
         return {
-          verifiedOnChain: true,
-          permissionType: "FunctionCall",
-          receiverId: fc.receiver_id,
-          methodNames: fc.method_names,
-          allowanceNear: fc.allowance ? NearTestnetClient.yoctoToNear(fc.allowance) : "Unlimited Gas",
+          verifiedOnChain: false,
+          verificationStatus: "RPC_UNAVAILABLE",
+          rpcReachable: false,
+          permissionType: "Unknown",
+          receiverId: null,
+          methodNames: [],
+          allowanceNear: null,
+          error: `RPC_HTTP_${response.status}`,
         };
       }
-    } catch {
-      // Fallback to the local sandbox descriptor when the ephemeral key has not been registered on-chain
-    }
 
-    return {
-      verifiedOnChain: false,
-      permissionType: "SimulatedFunctionCall",
-      receiverId: this.vaultContractId,
-      methodNames: ["execute_agent_payment"],
-      allowanceNear: "0.25",
-    };
+      const data = (await response.json()) as any;
+
+      if (data.error) {
+        const message = String(data.error.message || "NEAR_RPC_ERROR");
+        if (/does not exist|not found|unknown access key/i.test(message)) {
+          return {
+            verifiedOnChain: false,
+            verificationStatus: "NOT_FOUND",
+            rpcReachable: true,
+            permissionType: "NotFound",
+            receiverId: null,
+            methodNames: [],
+            allowanceNear: null,
+            error: message,
+          };
+        }
+
+        return {
+          verifiedOnChain: false,
+          verificationStatus: "RPC_UNAVAILABLE",
+          rpcReachable: true,
+          permissionType: "Unknown",
+          receiverId: null,
+          methodNames: [],
+          allowanceNear: null,
+          error: message,
+        };
+      }
+
+      const permission = data.result?.permission;
+
+      if (permission?.FullAccess !== undefined) {
+        return {
+          verifiedOnChain: false,
+          verificationStatus: "PERMISSION_MISMATCH",
+          rpcReachable: true,
+          permissionType: "FullAccess",
+          receiverId: null,
+          methodNames: [],
+          allowanceNear: null,
+          error: "ACCESS_KEY_IS_FULL_ACCESS",
+        };
+      }
+
+      const fc = permission?.FunctionCall;
+      if (!fc) {
+        return {
+          verifiedOnChain: false,
+          verificationStatus: "PERMISSION_MISMATCH",
+          rpcReachable: true,
+          permissionType: "Unknown",
+          receiverId: null,
+          methodNames: [],
+          allowanceNear: null,
+          error: "ACCESS_KEY_PERMISSION_UNKNOWN",
+        };
+      }
+
+      const methods = Array.isArray(fc.method_names) ? fc.method_names : [];
+      const receiverMatches = fc.receiver_id === this.vaultContractId;
+      const methodsMatch =
+        methods.length === 1 && methods[0] === "execute_agent_payment";
+
+      const verified = receiverMatches && methodsMatch;
+
+      return {
+        verifiedOnChain: verified,
+        verificationStatus: verified ? "VERIFIED" : "PERMISSION_MISMATCH",
+        rpcReachable: true,
+        permissionType: "FunctionCall",
+        receiverId: String(fc.receiver_id || ""),
+        methodNames: methods,
+        allowanceNear: fc.allowance
+          ? NearTestnetClient.yoctoToNear(fc.allowance)
+          : "Unlimited Gas",
+        ...(verified ? {} : { error: "ACCESS_KEY_SCOPE_MISMATCH" }),
+      };
+    } catch (error: any) {
+      return {
+        verifiedOnChain: false,
+        verificationStatus: "RPC_UNAVAILABLE",
+        rpcReachable: false,
+        permissionType: "Unknown",
+        receiverId: null,
+        methodNames: [],
+        allowanceNear: null,
+        error: String(error?.message || "RPC_REQUEST_FAILED"),
+      };
+    }
+  }
+
+  public async inspectLatestBlock(): Promise<{
+    height: number;
+    hash: string;
+  }> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    try {
+      const response = await fetch(this.rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "rimbux-live-block",
+          method: "block",
+          params: { finality: "final" },
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) throw new Error(`NEAR RPC HTTP ${response.status}`);
+
+      const data = await response.json() as any;
+      if (data.error || !data.result?.header) {
+        throw new Error("NEAR RPC block query failed.");
+      }
+
+      return {
+        height: data.result.header.height,
+        hash: data.result.header.hash,
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   public async verifyTransactionStatus(txHash: string, senderAccountId: string): Promise<{

@@ -29,6 +29,24 @@ function levenshteinDistance(a: string, b: string): number {
   return dp[a.length][b.length];
 }
 
+
+function normalizeSecurityText(value: string): string {
+  const confusables: Record<string, string> = {
+    "і": "i", "а": "a", "е": "e", "о": "o",
+    "р": "p", "с": "c", "х": "x", "у": "y",
+    "к": "k", "м": "m", "т": "t", "в": "b",
+    "н": "h",
+  };
+
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, " ")
+    .replace(/\\u(?:200B|200C|200D|FEFF)/gi, " ")
+    .replace(/[іаеорсхуктмн]/g, (char) => confusables[char] ?? char)
+    .replace(/(?<=\p{L})[._-]+(?=\p{L})/gu, "");
+}
+
 export class ScamDetectionEngine {
   public analyze(
     intent: ExtractedTransactionIntent,
@@ -38,18 +56,47 @@ export class ScamDetectionEngine {
     const warnings: ExplainableScamWarning[] = [];
     let promptInjectionDetected = false;
     let policyBypassAttemptDetected = false;
+    let paramSmugglingDetected = false;
 
     const rawLower = intent.rawInstruction.toLowerCase();
+    const normalizedInstruction = normalizeSecurityText(intent.rawInstruction);
+
+    const transferAmounts = intent.rawInstruction.match(/\b\d+(?:\.\d+)?\s*NEAR\b/gi) ?? [];
+    const recipientMentions = intent.rawInstruction.match(
+      /\b(?:to|ke|into|recipient|account)\s+[a-z0-9_-]+(?:\.[a-z0-9_-]+)+/gi
+    ) ?? [];
+
+    if (transferAmounts.length > 1 || recipientMentions.length > 1) {
+      paramSmugglingDetected = true;
+      warnings.push({
+        ruleId: "SCAM-PARAM-008",
+        severity: "CRITICAL",
+        whatWasDetected: "Multiple transfer parameters in one instruction",
+        whySuspicious:
+          "The instruction contains multiple transfer amounts or recipient clauses. Processing only the first match could silently omit or misrepresent part of the requested payment.",
+        supportingEvidence: [
+          `Transfer amount mentions detected: ${transferAmounts.length}.`,
+          `Recipient clauses detected: ${recipientMentions.length}.`,
+        ],
+        confidenceAndUncertainty: {
+          confidenceScore: 0.99,
+          uncertaintyNotes: "Fail-closed parsing rule. Multiple transfer parameters require separate, explicit instructions.",
+        },
+        recommendedAction: "IMMEDIATE_BLOCK",
+      });
+    }
 
     const injectionPatterns: Array<{ pattern: RegExp; label: string }> = [
       { pattern: /ignore\s+(all\s+)?(previous|prior|system)\s+(instructions|rules|policies)/i, label: "Instruction Override Directive" },
       { pattern: /(system\s*override|admin\s*mode|developer\s*mode|sudo\s+allow)/i, label: "Fake System Privilege Escalation" },
       { pattern: /<\s*(system|admin|policy_override)\s*>/i, label: "Injected Control Tag Spoofing" },
-      { pattern: /do\s+not\s+check\s+(reputation|policy|limits)/i, label: "Security Gate Suppression Request" },
+      { pattern: /do\s+not\s+(check|verify|inspect)\s+(the\s+)?(reputation|policy|spending\s+limits|daily\s+limits|limits)/i, label: "Security Gate Suppression Request" },
+      { pattern: /abaikan\s+(semua\s+)?(instruksi|aturan|kebijakan)\s+(sebelumnya|terdahulu)/i, label: "Indonesian Instruction Override" },
+      { pattern: /jangan\s+(periksa|cek|verifikasi)\s+(batas|limit|kebijakan|keamanan|aturan)/i, label: "Indonesian Security Gate Suppression" },
     ];
 
     const matchedInjections = injectionPatterns
-      .filter((p) => p.pattern.test(intent.rawInstruction))
+      .filter((p) => p.pattern.test(normalizedInstruction))
       .map((p) => p.label);
 
     if (matchedInjections.length > 0) {
@@ -57,7 +104,7 @@ export class ScamDetectionEngine {
       warnings.push({
         ruleId: "SCAM-INJ-001",
         severity: "CRITICAL",
-        whatWasDetected: "Upaya Adversarial Prompt Injection pada Instruksi Finansial",
+        whatWasDetected: "Adversarial prompt injection attempt in financial instructions",
         whySuspicious:
           "The instruction contains meta-control directives attempting to hijack agent reasoning or disable security checks.",
         supportingEvidence: matchedInjections.map(
@@ -74,11 +121,12 @@ export class ScamDetectionEngine {
     const bypassPatterns: Array<{ pattern: RegExp; label: string }> = [
       { pattern: /(set|change|increase|disable)\s+(daily\s+|max\s+|spending\s+)?limit/i, label: "Unauthorized Limit Mutation Attempt" },
       { pattern: /bypass\s+(approval|human|policy|sandbox|vault)/i, label: "Explicit Policy Bypass Request" },
-      { pattern: /(export|print|reveal|dump)\s+(private\s*key|secret\s*key|seed\s*phrase)/i, label: "Private Key Exfiltration Attempt" },
+      { pattern: /(export|print|reveal|dump)\s+(the\s+)?(private\s*key|secret\s*key|seed\s*phrase)/i, label: "Private Key Exfiltration Attempt" },
+      { pattern: /(ungkapkan|tampilkan|cetak|ekspor|bocorkan)\s+(kunci\s+privat|kunci\s+rahasia|frasa\s+pemulihan|private\s+key|seed\s+phrase)/i, label: "Indonesian Private Key Exfiltration Attempt" },
     ];
 
     const matchedBypasses = bypassPatterns
-      .filter((p) => p.pattern.test(intent.rawInstruction))
+      .filter((p) => p.pattern.test(normalizedInstruction))
       .map((p) => p.label);
 
     if (matchedBypasses.length > 0) {
@@ -106,7 +154,7 @@ export class ScamDetectionEngine {
           warnings.push({
             ruleId: "SCAM-IMP-003",
             severity: "HIGH",
-            whatWasDetected: `Impersonasi Akun Mirip / Typosquatting ('${recipient}' menyerupai '${target}')`,
+            whatWasDetected: `Lookalike Account Impersonation / Typosquatting ('${recipient}' resembles '${target}')`,
             whySuspicious:
               "An attacker registers a NEAR account differing by 1–2 characters (homoglyph/typosquat) to intercept funds intended for an official partner.",
             supportingEvidence: [
@@ -227,6 +275,7 @@ export class ScamDetectionEngine {
       highestSeverity,
       promptInjectionDetected,
       policyBypassAttemptDetected,
+      paramSmugglingDetected,
       warnings,
     };
   }

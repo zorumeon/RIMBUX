@@ -7,17 +7,18 @@ const DAY_NS = BigInt(24 * 60 * 60) * BigInt("1000000000");
 const CALLBACK_GAS = BigInt("30000000000000");
 
 function panic(message: string): never {
-  near.panicUtf8(new TextEncoder().encode(message));
+  throw new Error(message);
 }
 
 @NearBindgen({ requireInit: true })
 export class RimbuxVaultContract {
   ownerId: string = "";
+  agentAccountId: string = "";
   authorizedAgentKey: string = "";
   paused: boolean = false;
 
-  maxPerTxYocto: string = (BigInt(5) * YOCTO_PER_NEAR).toString();
-  dailyLimitYocto: string = (BigInt(15) * YOCTO_PER_NEAR).toString();
+  maxPerTxYocto: string = (BigInt(1) * YOCTO_PER_NEAR).toString();
+  dailyLimitYocto: string = (BigInt(3) * YOCTO_PER_NEAR).toString();
   currentDaySpendYocto: string = "0";
   dayWindowStartNs: string = "0";
 
@@ -29,11 +30,13 @@ export class RimbuxVaultContract {
   @initialize({ privateFunction: true })
   init({
     ownerId,
+    agentAccountId,
     authorizedAgentKey,
     maxPerTxNear,
     dailyLimitNear,
   }: {
     ownerId: string;
+    agentAccountId: string;
     authorizedAgentKey: string;
     maxPerTxNear: number;
     dailyLimitNear: number;
@@ -46,6 +49,16 @@ export class RimbuxVaultContract {
 
     if (!validAccountId) {
       panic("RIMBUX_VAULT: Invalid owner account ID.");
+    }
+
+    const validAgentAccountId =
+      typeof agentAccountId === "string" &&
+      agentAccountId.length >= 2 &&
+      agentAccountId.length <= 64 &&
+      /^([a-z0-9]+([-_][a-z0-9]+)*)(\.([a-z0-9]+([-_][a-z0-9]+)*))*$/.test(agentAccountId);
+
+    if (!validAgentAccountId) {
+      panic("RIMBUX_VAULT: Invalid agent account ID.");
     }
 
     if (typeof authorizedAgentKey !== "string" || !authorizedAgentKey) {
@@ -83,6 +96,7 @@ export class RimbuxVaultContract {
     }
 
     this.ownerId = ownerId;
+    this.agentAccountId = agentAccountId;
     this.authorizedAgentKey = authorizedAgentKey;
     this.maxPerTxYocto = maxPerTx.toString();
     this.dailyLimitYocto = dailyLimit.toString();
@@ -148,6 +162,10 @@ export class RimbuxVaultContract {
 
     if (!this.authorizedAgentKey) {
       panic("RIMBUX_VAULT: Missing authorized agent FunctionCall key.");
+    }
+
+    if (near.signerAccountId() !== this.agentAccountId) {
+      panic("RIMBUX_VAULT: Unauthorized agent account.");
     }
 
     const signerPk = near.signerAccountPk();

@@ -61,11 +61,12 @@ export class DeterministicPolicyEngine {
     }
 
     const targetMethod = intent.contractMethod || "execute_agent_payment";
-    if (!policyConfig.allowedContractMethods.includes(targetMethod)) {
+    const liveFunctionCallMethods = ["execute_agent_payment"] as const;
+    if (!(liveFunctionCallMethods as readonly string[]).includes(targetMethod)) {
       decision = "BLOCK";
       riskClassification = "CRITICAL";
       reasons.push(
-        `SANDBOX_METHOD_VIOLATION: Metode '${targetMethod}' is outside the FunctionCall key permissions [${policyConfig.allowedContractMethods.join(
+        `SANDBOX_METHOD_VIOLATION: Method '${targetMethod}' is outside the immutable FunctionCall key permissions [${liveFunctionCallMethods.join(
           ", "
         )}].`
       );
@@ -138,6 +139,12 @@ export class DeterministicPolicyEngine {
     const expiresAt = issuedAt + ttlMs;
     const contractMethod = intent.contractMethod || "execute_agent_payment";
 
+    if (contractMethod !== "execute_agent_payment") {
+      throw new Error(
+        `UNAUTHORIZED_CONTRACT_METHOD: '${contractMethod}' cannot receive an authorization token.`
+      );
+    }
+
     const payload = `${tokenId}:${intent.intentId}:${intent.recipientId}:${intent.amountYocto}:${contractMethod}:${issuedAt}:${expiresAt}:${approvedBy}`;
     const hmacSignature = crypto.createHmac("sha256", this.hmacSecret).update(payload).digest("hex");
 
@@ -166,6 +173,16 @@ export class DeterministicPolicyEngine {
   ): { valid: boolean; reason?: string } {
     if (!token) {
       return { valid: false, reason: "MISSING_AUTH_TOKEN: No authorization token was provided." };
+    }
+
+    if (
+      expectedMethod !== "execute_agent_payment" ||
+      token.contractMethod !== "execute_agent_payment"
+    ) {
+      return {
+        valid: false,
+        reason: "UNAUTHORIZED_CONTRACT_METHOD: Only execute_agent_payment is permitted.",
+      };
     }
 
     if (this.consumedTokenIds.has(token.tokenId)) {

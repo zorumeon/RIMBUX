@@ -7,8 +7,9 @@ import {
   TransactionLifecycleStatus,
 } from "../types";
 import { DeterministicPolicyEngine } from "../security/policyEngine";
+import { broadcastAndConfirm } from "./broadcast";
 
-const GAS = BigInt("30000000000000");
+const GAS = BigInt(process.env.RIMBUX_GAS || "100000000000000"); // 100 Tgas: vault execution + transfer + 30 Tgas callback
 const ZERO_DEPOSIT = BigInt(0);
 
 export function assertSufficientFunctionCallAllowance(
@@ -74,6 +75,7 @@ export class SandboxedSigningBoundary {
   private readonly vaultContractId: string;
   private readonly networkId: string;
   private readonly broadcastEnabled: boolean;
+  private oneShotBroadcastIntentId: string | null = null;
   private readonly allowedMethods = ["execute_agent_payment"];
   private readonly gasAllowanceNear = 0.25;
   private signingQueue: Promise<void> = Promise.resolve();
@@ -91,8 +93,8 @@ export class SandboxedSigningBoundary {
       throw new Error("SIGNING_KEY_MISSING: A valid NEAR FunctionCall private key is required.");
     }
 
-    if (!agentAccountId || !vaultContractId || agentAccountId !== vaultContractId) {
-      throw new Error("SIGNING_CONFIGURATION_INVALID: The FunctionCall key account must match the vault contract account.");
+    if (!agentAccountId || !vaultContractId || agentAccountId === vaultContractId) {
+      throw new Error("SIGNING_CONFIGURATION_INVALID: Agent signer and vault receiver must be configured as separate accounts.");
     }
 
     this.agentAccountId = agentAccountId;
@@ -121,6 +123,19 @@ export class SandboxedSigningBoundary {
 
   public revokeKey(): void {
     this.revoked = true;
+  }
+
+  public armApprovedOneShotBroadcast(intentId: string): void {
+    if (this.broadcastEnabled || this.oneShotBroadcastIntentId !== null || !intentId) {
+      throw new Error("ONE_SHOT_BROADCAST_ALREADY_CONFIGURED");
+    }
+    this.oneShotBroadcastIntentId = intentId;
+  }
+
+  public disarmOneShotBroadcast(intentId: string): void {
+    if (this.oneShotBroadcastIntentId === intentId) {
+      this.oneShotBroadcastIntentId = null;
+    }
   }
 
   public async signAuthorizedVaultIntent(
@@ -263,14 +278,49 @@ export class SandboxedSigningBoundary {
 
       const txHash = utils.serialize.base_encode(transactionHash);
 
+      let lifecycleStatus: SignedTransactionEnvelope["lifecycleStatus"] = "SIGNED";
+      let verificationNote =
+        "A valid NEAR Testnet transaction was signed locally. It has not been broadcast and no funds have been transferred.";
+
+      const oneShotMatchesIntent =
+        this.oneShotBroadcastIntentId === intent.intentId;
+
+      const isApprovedOneShot =
+        oneShotMatchesIntent &&
+        this.networkId === "testnet" &&
+        intent.actionType === "VAULT_TRANSFER" &&
+        methodName === "execute_agent_payment" &&
+        intent.recipientId === "rimbuxreceiver.testnet" &&
+        intent.amountYocto === "1000000000000000000000";
+
+      if (oneShotMatchesIntent && !isApprovedOneShot) {
+        this.oneShotBroadcastIntentId = null;
+        throw new Error("ONE_SHOT_BROADCAST_SCOPE_MISMATCH");
+      }
+
+      if (isApprovedOneShot) {
+        this.oneShotBroadcastIntentId = null;
+      }
+
+      if (this.broadcastEnabled || isApprovedOneShot) {
+        const outcome = await broadcastAndConfirm({
+          signedTransaction,
+          vaultContractId: this.vaultContractId,
+          intentNonce: intent.intentId,
+          txHash,
+        });
+        lifecycleStatus = outcome.lifecycleStatus;
+        verificationNote = outcome.note;
+      }
+
       return {
-        lifecycleStatus: "SIGNED",
+        lifecycleStatus,
         signerAccountId: this.agentAccountId,
         signerPublicKey: publicKey,
         receiverContractId: this.vaultContractId,
         methodName,
         args,
-        gasTgas: 30,
+        gasTgas: Number(GAS / 1_000_000_000_000n),
         attachedDepositYocto: "0",
         unsignedPayloadDigest,
         ed25519SignatureBase64: Buffer.from(
@@ -278,8 +328,7 @@ export class SandboxedSigningBoundary {
         ).toString("base64"),
         txHash,
         explorerUrl: `https://testnet.nearblocks.io/txns/${txHash}`,
-        verificationNote:
-          "A valid NEAR Testnet transaction was signed locally. It has not been broadcast and no funds have been transferred.",
+        verificationNote,
       };
     } catch (error) {
       policyEngine.releaseToken(authToken.tokenId);

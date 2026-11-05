@@ -33,7 +33,10 @@ export interface AgentDependencies {
   signingBoundary?: Pick<
     SandboxedSigningBoundary,
     "signAuthorizedVaultIntent" | "getPublicMetadata" | "revokeKey"
-  >;
+  > & {
+    armApprovedOneShotBroadcast?: (intentId: string) => void;
+    disarmOneShotBroadcast?: (intentId: string) => void;
+  };
   auditPersistence?: RimbuxPersistence;
   auditSecret?: string;
   broadcastEnabled?: boolean;
@@ -48,7 +51,10 @@ export class RimbuxAutonomousAgent {
   public readonly signingBoundary: Pick<
     SandboxedSigningBoundary,
     "signAuthorizedVaultIntent" | "getPublicMetadata" | "revokeKey"
-  >;
+  > & {
+    armApprovedOneShotBroadcast?: (intentId: string) => void;
+    disarmOneShotBroadcast?: (intentId: string) => void;
+  };
   public readonly auditLogger: TamperEvidentAuditLogger;
 
   private pendingApprovals: Map<string, PendingApprovalItem> = new Map();
@@ -119,6 +125,14 @@ export class RimbuxAutonomousAgent {
     };
   }
 
+  public armApprovedOneShotBroadcast(intentId: string): void {
+    const arm = this.signingBoundary.armApprovedOneShotBroadcast;
+    if (!arm) {
+      throw new Error("ONE_SHOT_BROADCAST_UNAVAILABLE");
+    }
+    arm.call(this.signingBoundary, intentId);
+  }
+
   public async processInstruction(instruction: string): Promise<AgentExecutionResponse> {
     const intent = this.parseNaturalLanguageInstruction(instruction);
 
@@ -128,6 +142,94 @@ export class RimbuxAutonomousAgent {
       { rawInstruction: instruction, recipientId: intent.recipientId, amountNear: intent.amountNear },
       intent.intentId
     );
+
+    // PRE-FLIGHT SECURITY GATE: reject prompt injection before reputation,
+    // spending reservations, approval creation, or transaction signing.
+    const preflightReputation = {
+      accountId: intent.recipientId,
+      classification: "NEUTRAL_UNKNOWN" as const,
+      score: 0,
+      confidence: 0,
+      accountExistsOnChain: null,
+      hasDeployedContract: null,
+      rpcReachable: false,
+      evidence: [],
+      summary: "Reputation assessment skipped because the pre-flight security gate ran first.",
+    };
+
+    const preflightScamReport = this.scamDetector.analyze(
+      intent,
+      preflightReputation,
+      this.spendingController.getConfig()
+    );
+
+    if (
+      preflightScamReport.promptInjectionDetected ||
+      preflightScamReport.policyBypassAttemptDetected ||
+      preflightScamReport.paramSmugglingDetected
+    ) {
+      const reasons = [
+        ...(preflightScamReport.promptInjectionDetected
+          ? ["PROMPT_INJECTION_BLOCKED: Instruction contains a prompt-injection attempt."]
+          : []),
+        ...(preflightScamReport.policyBypassAttemptDetected
+          ? ["POLICY_BYPASS_BLOCKED: Instruction attempts to bypass security policy."]
+          : []),
+        ...(preflightScamReport.paramSmugglingDetected
+          ? ["PARAM_SMUGGLING_BLOCKED: Multiple transfer amounts or recipient clauses detected in one instruction."]
+          : []),
+      ];
+
+      const spendingCheck = {
+        passed: false,
+        requiresHumanApproval: false,
+        violations: reasons,
+        snapshot: this.spendingController.getMetricsSnapshot(intent.recipientId),
+      };
+
+      const evaluation = {
+        intentId: intent.intentId,
+        decision: "BLOCK" as const,
+        riskClassification: "CRITICAL" as const,
+        reasons,
+        spendingCheck,
+        reputation: preflightReputation,
+        scamReport: preflightScamReport,
+        evaluatedAt: Date.now(),
+      };
+
+      const record: TransactionRecord = {
+        intentId: intent.intentId,
+        timestamp: Date.now(),
+        rawInstruction: instruction,
+        recipientId: intent.recipientId,
+        amountNear: intent.amountNear,
+        status: "BLOCKED_BY_POLICY",
+        policyDecision: "BLOCK",
+        riskClassification: "CRITICAL",
+        reasons,
+        reputationScore: 0,
+        scamWarningsCount: preflightScamReport.warnings.length,
+        verificationNote:
+          "Rejected by the pre-flight security gate before reputation lookup, spending reservation, approval, or signing.",
+      };
+
+      this.transactionHistory.unshift(record);
+      this.persistTransactionRecord(record);
+      this.auditLogger.record(
+        "TRANSACTION_BLOCKED",
+        "CRITICAL",
+        { reasons, stage: "PRE_FLIGHT_SECURITY_GATE" },
+        intent.intentId
+      );
+
+      return {
+        intent,
+        evaluation,
+        transactionRecord: record,
+        agentExplanation: `Request rejected (CRITICAL risk): ${reasons.join(" | ")}`,
+      };
+    }
 
     const reputation = await this.reputationEngine.assessAccount(intent.recipientId);
     const spendingCheck = await this.spendingController.evaluateAndReserve(intent);
@@ -365,6 +467,30 @@ export class RimbuxAutonomousAgent {
       };
     } finally {
       this.approvalInFlight.delete(intentId);
+    }
+  }
+
+  public async approvePendingIntentOneShot(
+    intentId: string
+  ): Promise<AgentExecutionResponse> {
+    const pending = this.pendingApprovals.get(intentId);
+    if (!pending) throw new Error("PENDING_INTENT_NOT_FOUND");
+
+    if (
+      this.nearClient.networkId !== "testnet" ||
+      pending.intent.actionType !== "VAULT_TRANSFER" ||
+      pending.intent.contractMethod !== "execute_agent_payment" ||
+      pending.intent.recipientId !== "rimbuxreceiver.testnet" ||
+      pending.intent.amountYocto !== "1000000000000000000000"
+    ) {
+      throw new Error("ONE_SHOT_TRANSACTION_SCOPE_MISMATCH");
+    }
+
+    this.armApprovedOneShotBroadcast(intentId);
+    try {
+      return await this.approvePendingIntent(intentId, true);
+    } finally {
+      this.signingBoundary.disarmOneShotBroadcast?.(intentId);
     }
   }
 

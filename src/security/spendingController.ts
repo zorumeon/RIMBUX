@@ -47,14 +47,13 @@ export class SpendingController {
         "attacker.testnet",
       ],
       requireAllowlistForContracts: true,
-      allowedContractMethods: [
-        "execute_agent_payment",
-        "ft_transfer",
-        "storage_deposit",
-      ],
+      allowedContractMethods: ["execute_agent_payment"],
       emergencyLockdown: false,
       ...initialConfig,
     };
+
+    // Enforce the live NEAR Testnet FunctionCall key permission.
+    this.config.allowedContractMethods = ["execute_agent_payment"];
   }
 
   private async acquireLock(): Promise<void> {
@@ -85,6 +84,10 @@ export class SpendingController {
     patch: Partial<SpendingPolicyConfig>
   ): SpendingPolicyConfig {
     this.config = { ...this.config, ...patch };
+
+    // Keep the live NEAR Testnet FunctionCall permission immutable.
+    this.config.allowedContractMethods = ["execute_agent_payment"];
+
     return this.getConfig();
   }
 

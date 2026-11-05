@@ -12,7 +12,7 @@ interface KnownEntityRecord {
 const KNOWN_INTELLIGENCE_DB: Record<string, KnownEntityRecord> = {
   "wrap.testnet": {
     category: "VERIFIED_PROTOCOL",
-    reason: "Kontrak resmi Wrapped NEAR (wNEAR) NEP-141 di NEAR Testnet.",
+    reason: "Official Wrapped NEAR (wNEAR) NEP-141 contract on NEAR Testnet.",
     reportedAt: "2025-01-10",
     source: "NEAR Ecosystem Verified Registry",
   },
@@ -86,7 +86,7 @@ export class ReputationIntelligenceEngine {
           {
             source: "BEHAVIORAL_HISTORY",
             indicator: "INVALID_NEAR_ACCOUNT_SYNTAX",
-            detail: `Format akun '${normalizedId}' melanggar spesifikasi penamaan akun NEAR Protocol.`,
+            detail: `Account format '${normalizedId}' violates NEAR Protocol account naming requirements.`,
             weight: -100,
           },
         ],
@@ -123,7 +123,7 @@ export class ReputationIntelligenceEngine {
         evidence.push({
           source: "THREAT_INTEL_REGISTRY",
           indicator: intel.category,
-          detail: `${intel.reason} (Sumber: ${intel.source}, Dilaporkan: ${intel.reportedAt})`,
+          detail: `${intel.reason} (Source: ${intel.source}, Reported: ${intel.reportedAt})`,
           weight: -45,
         });
       } else if (intel.category === "VERIFIED_PROTOCOL" || intel.category === "KNOWN_PARTNER") {
@@ -132,7 +132,7 @@ export class ReputationIntelligenceEngine {
         evidence.push({
           source: "THREAT_INTEL_REGISTRY",
           indicator: intel.category,
-          detail: `${intel.reason} (Sumber: ${intel.source})`,
+          detail: `${intel.reason} (Source: ${intel.source})`,
           weight: +35,
         });
       }
@@ -167,7 +167,7 @@ export class ReputationIntelligenceEngine {
           evidence.push({
             source: "CONTRACT_INSPECTION",
             indicator: "SMART_CONTRACT_DEPLOYED",
-            detail: `Akun memiliki bytecode kontrak Wasm terdeploy (code_hash: ${onChainState.codeHash?.slice(0, 12)}...).`,
+            detail: `Account has deployed Wasm contract bytecode (code_hash: ${onChainState.codeHash?.slice(0, 12)}...).`,
             weight: intel?.category === "VERIFIED_PROTOCOL" ? +5 : -5,
           });
           if (!intel) {
@@ -215,7 +215,7 @@ export class ReputationIntelligenceEngine {
       hasDeployedContract,
       rpcReachable: onChainState.rpcReachable,
       evidence,
-      summary: `Account '${normalizedId}' diklasifikasikan sebagai ${classification} (Skor: ${score}/100, Keyakinan: ${Math.round(
+      summary: `Account '${normalizedId}' is classified as ${classification} (Score: ${score}/100, Confidence: ${Math.round(
         confidence * 100
       )}%).`,
     };

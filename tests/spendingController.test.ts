@@ -124,3 +124,158 @@ test("committed spending survives database restart", async () => {
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("initial config cannot expand the live NEAR FunctionCall method allowlist", () => {
+  const controller = new SpendingController({
+    allowedContractMethods: [
+      "execute_agent_payment",
+      "ft_transfer",
+      "storage_deposit",
+      "add_key",
+    ],
+  });
+
+  const config = (
+    controller as unknown as {
+      config: { allowedContractMethods: string[] };
+    }
+  ).config;
+
+  assert.deepEqual(config.allowedContractMethods, ["execute_agent_payment"]);
+});
+
+test("policy updates cannot expand the live NEAR FunctionCall method allowlist", () => {
+  const controller = new SpendingController();
+
+  const updated = controller.updateConfig({
+    allowedContractMethods: [
+      "execute_agent_payment",
+      "ft_transfer",
+      "storage_deposit",
+      "add_key",
+    ],
+  });
+
+  assert.deepEqual(updated.allowedContractMethods, ["execute_agent_payment"]);
+  assert.deepEqual(
+    controller.getConfig().allowedContractMethods,
+    ["execute_agent_payment"]
+  );
+});
+
+test("policy updates preserve valid spending limits and lockdown settings", () => {
+  const controller = new SpendingController();
+
+  const updated = controller.updateConfig({
+    dailySpendingLimitNear: 20,
+    emergencyLockdown: true,
+  });
+
+  assert.equal(updated.dailySpendingLimitNear, 20);
+  assert.equal(updated.emergencyLockdown, true);
+  assert.deepEqual(updated.allowedContractMethods, ["execute_agent_payment"]);
+});
+
+
+// Spending quota enforcement tests
+
+test("blocks a transaction above the per-transaction maximum", async () => {
+  const controller = new SpendingController({
+    maxTransactionAmountNear: 0.5,
+  });
+
+  const result = await controller.evaluateAndReserve(
+    makeIntent("quota-max-transaction", 1)
+  );
+
+  assert.equal(result.passed, false);
+  assert.ok(result.violations.length > 0);
+  assert.equal(controller.getMetricsSnapshot().totalSpentNear, 0);
+});
+
+test("blocks spending that would exceed the rolling 24-hour daily limit", async () => {
+  const controller = new SpendingController({
+    dailySpendingLimitNear: 1.5,
+  });
+
+  const first = await controller.evaluateAndReserve(
+    makeIntent("quota-daily-first", 1)
+  );
+  assert.equal(first.passed, true);
+  assert.ok(first.reservationId);
+  await controller.commitReservation(first.reservationId);
+
+  const second = await controller.evaluateAndReserve(
+    makeIntent("quota-daily-second", 1)
+  );
+
+  assert.equal(second.passed, false);
+  assert.ok(second.violations.length > 0);
+  assert.equal(controller.getMetricsSnapshot().dailySpentNear, 1);
+});
+
+test("blocks spending that would exceed the lifetime wallet cap", async () => {
+  const controller = new SpendingController({
+    totalWalletSpendingCapNear: 1.5,
+  });
+
+  const first = await controller.evaluateAndReserve(
+    makeIntent("quota-lifetime-first", 1)
+  );
+  assert.equal(first.passed, true);
+  assert.ok(first.reservationId);
+  await controller.commitReservation(first.reservationId);
+
+  const second = await controller.evaluateAndReserve(
+    makeIntent("quota-lifetime-second", 1)
+  );
+
+  assert.equal(second.passed, false);
+  assert.ok(second.violations.length > 0);
+  assert.equal(controller.getMetricsSnapshot().totalSpentNear, 1);
+});
+
+test("blocks spending that would exceed the per-recipient daily cap", async () => {
+  const controller = new SpendingController({
+    perRecipientDailyLimitNear: 1.5,
+  });
+
+  const first = await controller.evaluateAndReserve(
+    makeIntent("quota-recipient-first", 1)
+  );
+  assert.equal(first.passed, true);
+  assert.ok(first.reservationId);
+  await controller.commitReservation(first.reservationId);
+
+  const second = await controller.evaluateAndReserve(
+    makeIntent("quota-recipient-second", 1)
+  );
+
+  assert.equal(second.passed, false);
+  assert.ok(second.violations.length > 0);
+  assert.equal(
+    controller.getMetricsSnapshot("alice.testnet").recipientSpentTodayNear,
+    1
+  );
+});
+
+test("blocks transactions above the configured per-minute rate", async () => {
+  const controller = new SpendingController({
+    maxTxPerMinute: 1,
+  });
+
+  const first = await controller.evaluateAndReserve(
+    makeIntent("quota-rate-first", 1)
+  );
+  assert.equal(first.passed, true);
+  assert.ok(first.reservationId);
+  await controller.commitReservation(first.reservationId);
+
+  const second = await controller.evaluateAndReserve(
+    makeIntent("quota-rate-second", 1)
+  );
+
+  assert.equal(second.passed, false);
+  assert.ok(second.violations.length > 0);
+  assert.equal(controller.getMetricsSnapshot().recentTxCountLastMinute, 1);
+});

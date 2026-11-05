@@ -93,6 +93,7 @@ export interface ScamDetectionReport {
   highestSeverity: "NONE" | "INFO" | "WARNING" | "HIGH" | "CRITICAL";
   promptInjectionDetected: boolean;
   policyBypassAttemptDetected: boolean;
+  paramSmugglingDetected: boolean;
   warnings: ExplainableScamWarning[];
 }
 

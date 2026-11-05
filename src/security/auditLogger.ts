@@ -75,7 +75,7 @@ export class TamperEvidentAuditLogger {
   ): AuditLogEntry {
     const previous = this.logs[this.logs.length - 1];
 
-    // Snapshot immutable memastikan data audit tidak berubah setelah dicatat.
+    // Immutable snapshots ensure audit data cannot change after recording.
     const safeDetails = JSON.parse(JSON.stringify(details)) as Record<string, unknown>;
 
     const entryData = {

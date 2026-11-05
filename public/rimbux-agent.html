@@ -1124,7 +1124,7 @@
           networkId: "testnet",
           rpcUrl: "https://test.rpc.fastnear.com", // rpc.testnet.near.org is deprecated and rate limited
           vaultContractId: "rimbux-vault.rimbux-agent.testnet",
-          agentAccountId: "agent-operator.testnet"
+          agentAccountId: "agent.rimbux.testnet"
         };
         this.policyConfig = {
           maxTransactionAmountNear: 5.0,
@@ -1997,22 +1997,22 @@
     }
 
     async function resetDemo() {
-      if (!confirm('Reset demo state? This clears the spending ledger, transaction history and audit log.')) return;
+      const confirmed = confirm(
+        'Reset the current demo view? Backend spending records, transaction history, and audit logs will be preserved.'
+      );
+      if (!confirmed) return;
+
       try {
         if (demoMode) {
           localEngine = new RimbuxSecurityEngine();
-        } else {
-          const response = await fetch('/api/reset', { method: 'POST' });
-          if (!response.ok) {
-            throw new Error(response.status === 404 ? 'the backend has no /api/reset endpoint yet, restart the server instead' : `status ${response.status}`);
-          }
         }
+
         resetStageUI();
         await loadBackendStatus();
-        showToast('Demo state reset.', 'info');
+        showToast('Demo view reset. Backend records were preserved.', 'info');
       } catch (error) {
-        console.error('Reset failed:', error);
-        showToast(`Reset failed: ${error.message}`);
+        console.error('Demo view reset failed:', error);
+        showToast(`Demo view reset failed: ${error.message}`);
       }
     }
 
@@ -2025,23 +2025,45 @@
         refreshDashboardUI();
         return;
       }
-      let response;
+
       try {
-        response = await fetch('/api/status');
-      } catch (err) {
+        const response = await fetch('/api/status', { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`API status error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const validStatus =
+          data &&
+          typeof data === 'object' &&
+          typeof data.network?.agentAccountId === 'string' &&
+          typeof data.network?.vaultContractId === 'string' &&
+          data.sandboxWallet &&
+          typeof data.sandboxWallet === 'object' &&
+          data.spendingPolicy &&
+          typeof data.spendingPolicy === 'object' &&
+          data.spendingMetrics &&
+          typeof data.spendingMetrics === 'object' &&
+          Array.isArray(data.pendingApprovals) &&
+          Array.isArray(data.transactionHistory) &&
+          Array.isArray(data.auditLogs) &&
+          data.auditIntegrity &&
+          typeof data.auditIntegrity.intact === 'boolean';
+
+        if (!validStatus) {
+          throw new Error('INCOMPLETE_BACKEND_STATUS');
+        }
+
+        backendStatus = data;
+        backendOnline = true;
+        refreshDashboardUI();
+        void loadRecoveryStatus();
+      } catch (error) {
+        backendStatus = null;
         backendOnline = false;
         refreshDashboardUI();
-        throw err;
+        throw error;
       }
-      if (!response.ok) {
-        backendOnline = false;
-        refreshDashboardUI();
-        throw new Error(`API status error: ${response.status}`);
-      }
-      backendStatus = await response.json();
-      backendOnline = true;
-      refreshDashboardUI();
-      loadRecoveryStatus();
     }
 
     async function loadRecoveryStatus() {
@@ -2091,12 +2113,75 @@
     }
 
     function refreshDashboardUI() {
-      const sw = backendStatus?.sandboxWallet || localEngine.sandboxKey;
-      const sp = backendStatus?.spendingPolicy || localEngine.policyConfig;
-      const sm = backendStatus?.spendingMetrics || localEngine.getMetricsSnapshot();
-
       const chip = document.getElementById('headerStatusChip');
       const netChip = document.getElementById('networkChip');
+
+      if (!demoMode && (!backendOnline || !backendStatus)) {
+        if (chip) {
+          chip.className = 'hidden sm:inline-flex items-center gap-1.5 text-xs font-mono px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-semibold whitespace-nowrap';
+          chip.textContent = 'BACKEND_OFFLINE · DATA_UNAVAILABLE';
+        }
+        if (netChip) netChip.textContent = 'NEAR Testnet · unavailable';
+
+        for (const id of ['metricDriftValue', 'metricDriftLabel',
+                          'recoveryApprovalCount', 'recoveryTransactionCount',
+                          'recoveryReservationCount']) {
+          const element = document.getElementById(id);
+          if (element) element.textContent = '—';
+        }
+
+        for (const id of ['cfgMaxTx', 'cfgDaily']) {
+          const element = document.getElementById(id);
+          if (element) {
+            element.value = '';
+            element.disabled = true;
+          }
+        }
+
+        const lockdown = document.getElementById('lockdownBtn');
+        if (lockdown) {
+          lockdown.textContent = 'Status Unavailable';
+          lockdown.disabled = true;
+        }
+
+        const unavailable = {
+          spendingSummaryCompact: 'Backend spending data unavailable.',
+          sandboxMetadata: 'Backend wallet metadata unavailable.',
+          pendingApprovalsList: 'Approval data unavailable.',
+          txHistoryList: 'Transaction history unavailable.',
+          auditLogList: 'Audit log data unavailable.'
+        };
+
+        for (const [id, message] of Object.entries(unavailable)) {
+          const element = document.getElementById(id);
+          if (element) element.textContent = message;
+        }
+
+        const pendingBadge = document.getElementById('pendingCountBadge');
+        if (pendingBadge) pendingBadge.textContent = 'Unavailable';
+
+        const auditCount = document.getElementById('auditCountBadge');
+        if (auditCount) auditCount.textContent = 'Unavailable';
+
+        const auditChip = document.getElementById('auditIntegrityChip');
+        if (auditChip) auditChip.textContent = 'AUDIT STATUS UNAVAILABLE';
+
+        const footerAudit = document.getElementById('footerAuditStatus');
+        if (footerAudit) footerAudit.textContent = 'Audit status unavailable';
+
+        return;
+      }
+
+      const sw = demoMode ? localEngine.sandboxKey : backendStatus.sandboxWallet;
+      const sp = demoMode ? localEngine.policyConfig : backendStatus.spendingPolicy;
+      const sm = demoMode ? localEngine.getMetricsSnapshot() : backendStatus.spendingMetrics;
+
+      for (const id of ['cfgMaxTx', 'cfgDaily']) {
+        const element = document.getElementById(id);
+        if (element) element.disabled = false;
+      }
+      const lockdownControl = document.getElementById('lockdownBtn');
+      if (lockdownControl) lockdownControl.disabled = false;
       if (netChip) netChip.textContent = (demoMode || !backendOnline) ? 'NEAR Testnet \u00b7 demo' : 'NEAR Testnet';
       if (demoMode) {
         chip.className = 'hidden sm:inline-flex items-center gap-1.5 text-xs font-mono px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-semibold whitespace-nowrap';
@@ -2168,15 +2253,15 @@
               ? 'bg-amber-100 text-amber-800'
               : 'bg-rose-100 text-rose-800';
             return `
-              <div class="p-3.5 rounded-xl bg-stone-50 border border-line font-mono space-y-1">
-                <div class="flex flex-wrap justify-between items-center gap-2">
-                  <span class="font-bold text-ink">${esc(tx.amountNear)} NEAR &rarr; ${esc(tx.recipientId)}</span>
-                  <span class="text-xs px-2 py-0.5 rounded font-bold ${pill}">${esc(tx.policyDecision)} &bull; ${esc(tx.status)}</span>
+              <div class="flex flex-col items-start gap-2.5 p-4 rounded-xl bg-stone-50 border border-line font-mono text-left">
+                <div class="w-full min-w-0 font-bold text-ink text-sm leading-6 break-all">${esc(tx.amountNear)} NEAR <span class="text-stone-400">&rarr;</span> ${esc(tx.recipientId)}</div>
+                <div class="w-full min-w-0">
+                  <span class="inline-block max-w-full text-left text-[11px] leading-5 px-3 py-1 rounded-lg font-bold whitespace-normal break-words ${pill}">${esc(tx.policyDecision)} &bull; ${esc(tx.status)}</span>
                 </div>
-                <div class="text-stone-500">"${esc(tx.rawInstruction)}"</div>
-                <div class="text-stone-700">${esc(tx.reasons.join(' | '))}</div>
-                ${tx.txHash ? `<div class="text-emerald-700 font-semibold">TxHash: ${esc(tx.txHash)} | Digest: ${esc(tx.unsignedTxPayloadDigest.slice(0, 16))}...</div>` : ''}
-                <div class="text-[11px] text-stone-400">${esc(tx.verificationNote)}</div>
+                <div class="w-full min-w-0 border-t border-stone-200 pt-2 text-xs text-stone-500 leading-6 break-words">"${esc(tx.rawInstruction)}"</div>
+                <div class="w-full min-w-0 text-xs text-stone-700 leading-6 break-words">${esc(tx.reasons.join(' | '))}</div>
+                ${tx.txHash ? `<div class="w-full min-w-0 text-xs text-emerald-700 font-semibold leading-6 break-all">TxHash: ${esc(tx.txHash)} | Digest: ${esc(tx.unsignedTxPayloadDigest.slice(0, 16))}...</div>` : ''}
+                <div class="w-full min-w-0 text-[11px] text-stone-400 leading-5 break-words">${esc(tx.verificationNote)}</div>
               </div>
             `;
           }).join('');
@@ -2254,7 +2339,7 @@
       const repOk = ev.reputation.classification !== 'MALICIOUS';
       const scamOk = !ev.scamReport.triggered;
       const methodOk = (result.intent.contractMethod || 'execute_agent_payment') === 'execute_agent_payment';
-      const liveKey = backendStatus?.sandboxWallet || localEngine.sandboxKey;
+      const liveKey = demoMode ? localEngine.sandboxKey : backendStatus?.sandboxWallet;
       const keyIsDemo = demoMode || !backendStatus?.sandboxWallet;
 
       function gateRow(label, ok, warn, detail) {
@@ -2310,8 +2395,8 @@
         const tokenObj = ev.authorizationToken;
         const payloadPreview = {
           near_transaction: {
-            signer_id: localEngine.network.agentAccountId,
-            receiver_id: liveKey.receiverContractId || localEngine.network.vaultContractId,
+            signer_id: demoMode ? localEngine.network.agentAccountId : backendStatus?.network?.agentAccountId,
+            receiver_id: demoMode ? (liveKey.receiverContractId || localEngine.network.vaultContractId) : backendStatus?.network?.vaultContractId,
             public_key: keyIsDemo ? `[DEMO] ${liveKey.publicKey}` : liveKey.publicKey,
             action: {
               type: "FunctionCall",

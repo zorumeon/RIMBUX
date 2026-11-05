@@ -212,7 +212,7 @@ async function runAdversarialSecuritySuite() {
 
   await runScenario("13. FunctionCall Allowance Sufficient", async () => {
     const gasPrice = "100000000";
-    const requiredAllowance = BigInt("30000000000000") * BigInt(gasPrice);
+    const requiredAllowance = BigInt("100000000000000") * BigInt(gasPrice);
 
     assert.doesNotThrow(() =>
       assertSufficientFunctionCallAllowance(
@@ -283,7 +283,7 @@ async function runAdversarialSecuritySuite() {
     const testKey = KeyPair.fromRandom("ed25519").toString();
 
     const boundary = new SandboxedSigningBoundary(
-      "mock-vault.testnet",
+      "mock-agent.testnet",
       "mock-vault.testnet",
       testKey,
       mockProvider as any
@@ -366,7 +366,7 @@ async function runAdversarialSecuritySuite() {
     const testKey = KeyPair.fromRandom("ed25519").toString();
 
     const boundary = new SandboxedSigningBoundary(
-      "mock-vault.testnet",
+      "mock-agent.testnet",
       "mock-vault.testnet",
       testKey,
       mockProvider as any
@@ -423,7 +423,7 @@ async function runAdversarialSecuritySuite() {
       "Ed25519 signature must pass independent cryptographic verification."
     );
 assert.ok(result.txHash.length > 0);
-    assert.strictEqual(result.signerAccountId, "mock-vault.testnet");
+    assert.strictEqual(result.signerAccountId, "mock-agent.testnet");
     assert.strictEqual(
       result.verificationNote.includes("has not been broadcast"),
       true

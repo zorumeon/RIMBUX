@@ -13,3 +13,21 @@ backups/
 data/*.sqlite
 data/*.sqlite-*
 *.bak
+
+# Local UI experiments and generated state
+.nicegui/
+ui/
+e npm test
+
+# Temporary audit archives and build experiments
+*.tar.gz
+*.before-*
+*.backup*
+*.wasm.before-*
+contracts/rimbux-vault/build/*-fixed.js
+contracts/rimbux-vault/build/*-fixed.js.map
+contracts/rimbux-vault/build/*-fixed.wasm
+contracts/rimbux-vault/build/*.js
+contracts/rimbux-vault/build/*.js.map
+
+public/*.pre-auth-ui

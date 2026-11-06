@@ -8,6 +8,17 @@ Submission for the **NEAR Hackathon 2026, AI Security & Defense track**. Built s
 
 ![RIMBUX dashboard](docs/screenshots/01-overview.png)
 
+### Dashboard overview
+
+The Overview screen introduces RIMBUX's wallet security controls:
+
+- **AI Agent:** Shows the agent monitoring concept and its relationship with the wallet.
+- **Policy:** Highlights access control, spending limits, and risk detection.
+- **Spending:** Represents daily limits and approval controls.
+- **Audit:** Highlights tamper-evident decision records.
+- **Scam Defense:** Describes protection against scams and prompt injection.
+- **Public Read-only:** The public demo can be explored without granting access to live signing or transaction broadcasting.
+
 <!-- TODO: add demo video link -->
 <!-- **Demo video:** https://... -->
 
@@ -19,13 +30,13 @@ Submission for the **NEAR Hackathon 2026, AI Security & Defense track**. Built s
 
 | Answer | What it means | Example from our tests |
 |---|---|---|
-| **Allow** | Safe and within your limits. Signed. | Send 1.2 NEAR to `alice.testnet` |
+| **Allow** | Safe and within policy. Simulated in public read-only mode. | Send 1.2 NEAR to `alice.testnet` |
 | **Ask a human** | Big or unfamiliar. Waits for a person to approve. | Send 3.5 NEAR, or pay an unknown account |
 | **Block** | Looks like an attack. Never signed. | Pay `al1ce.testnet` (a fake lookalike of `alice.testnet`) |
 
 Every decision is saved in a log that shows if anyone tries to change it later.
 
-**Safe to try.** RIMBUX runs on NEAR Testnet in test mode. Payments are signed locally but not sent, so no funds move.
+**Safe to try.** The public dashboard runs in read-only demo mode. Payment decisions and human approvals are simulated; no transaction is signed or broadcast and no funds move.
 
 ## What you will see
 
@@ -53,12 +64,12 @@ Agent asks: "Send 3.5 NEAR to alice.testnet"
         +---- Unsure or large ---> ASK A HUMAN (approve / reject)
         |
         v
-4. Sign (only with a valid pass from steps 1-3)
+4. Execute only when live signing is explicitly configured; otherwise simulate the decision in public read-only mode
         |
         v
-NEAR Testnet
+NEAR Testnet (live mode only)
 
-Every step is written to the audit log.
+Public demo mode stops at simulation. Every decision is written to the audit log.
 ```
 
 ## What RIMBUX protects against
@@ -80,7 +91,7 @@ Run them from the dashboard, or call `POST /api/audit/run-suite`. Each test show
 
 | # | Attack or situation | Expected result |
 |---|---|---|
-| 1 | Normal payment, 1.2 NEAR | Allowed and signed |
+| 1 | Normal payment, 1.2 NEAR | Allowed by policy; simulated in public read-only mode |
 | 2 | Payment over the limit (9 NEAR, limit 5) | Blocked |
 | 3 | Pay a known scam address | Blocked |
 | 4 | Lookalike account (`al1ce.testnet`) | Blocked |
@@ -217,11 +228,15 @@ Open `http://localhost:3000`.
 | GET | `/api/reputation/:accountId` | Check how trustworthy an account looks |
 | POST | `/api/audit/run-suite` | Run the attack tests |
 
-In the dashboard, operator actions (approve, reject, revoke) need an operator login.
+### Public demo and operator access
+
+The public dashboard is available in read-only demo mode without operator login. Payment evaluations and human approval decisions are simulated; they do not sign or broadcast transactions.
+
+Live operator controls and signing operations require the appropriate authenticated configuration. Never expose private keys or operator credentials in a public demo.
 
 ## Honest limits
 
-- **"Signed" means signed locally.** It does not mean sent to the network or confirmed.
+- **In live mode, "signed" means signed locally.** It does not mean sent to the network or confirmed.
 - **Revoking a key is local.** It does not remove the key from NEAR.
 - **Risk scores are signals, not guarantees.** They come from NEAR Testnet RPC data plus a local list, not a network-wide threat feed.
 - **The audit log shows tampering; it does not prevent it.**

@@ -236,7 +236,11 @@ app.post("/api/recovery/release/:reservationId", requireOperator, async (req, re
   }
 });
 
-app.post("/api/agent/instruct", requireOperator, async (req, res) => {
+app.post("/api/agent/instruct", (req, res, next) => {
+  // Public access is allowed only when live signing is unavailable.
+  if (!rimbuxAgent.signingBoundary.getPublicMetadata().publicKey) return next();
+  return requireOperator(req, res, next);
+}, async (req, res) => {
   try {
     const { instruction } = req.body;
     if (!instruction || typeof instruction !== "string") {
@@ -249,7 +253,11 @@ app.post("/api/agent/instruct", requireOperator, async (req, res) => {
   }
 });
 
-app.post("/api/approvals/:intentId", requireOperator, async (req, res) => {
+app.post("/api/approvals/:intentId", (req, res, next) => {
+  // Public approval is permitted only in read-only mode.
+  if (!rimbuxAgent.signingBoundary.getPublicMetadata().publicKey) return next();
+  return requireOperator(req, res, next);
+}, async (req, res) => {
   try {
     const { approve } = req.body ?? {};
     if (typeof approve !== "boolean") {

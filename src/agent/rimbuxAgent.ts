@@ -328,6 +328,44 @@ export class RimbuxAutonomousAgent {
       };
     }
 
+    // Public read-only demo: evaluate the policy, but never sign or broadcast.
+    if (!this.signingBoundary.getPublicMetadata().publicKey) {
+      await this.spendingController.releaseReservation(spendingCheck.reservationId);
+
+      const record: TransactionRecord = {
+        intentId: intent.intentId,
+        timestamp: Date.now(),
+        rawInstruction: instruction,
+        recipientId: intent.recipientId,
+        amountNear: intent.amountNear,
+        status: "SIMULATED",
+        policyDecision: "ALLOW",
+        riskClassification: evaluation.riskClassification,
+        reasons: evaluation.reasons,
+        reputationScore: reputation.score,
+        scamWarningsCount: scamReport.warnings.length,
+        verificationNote:
+          "Read-only demo: security evaluation passed. No signing, broadcast, or spending reservation was performed.",
+      };
+
+      this.transactionHistory.unshift(record);
+      this.persistTransactionRecord(record);
+      this.auditLogger.record(
+        "TRANSACTION_SIMULATED_READ_ONLY",
+        "INFO",
+        { decision: "ALLOW", amountNear: intent.amountNear },
+        intent.intentId
+      );
+
+      return {
+        intent,
+        evaluation,
+        transactionRecord: record,
+        agentExplanation:
+          "Security checks passed. SIMULATED ONLY — no transaction was signed or broadcast.",
+      };
+    }
+
     const signedEnvelope = await this.signingBoundary.signAuthorizedVaultIntent(
       intent,
       evaluation.authorizationToken,
@@ -400,6 +438,9 @@ export class RimbuxAutonomousAgent {
 
     try {
       const existingRecord = this.transactionHistory.find((r) => r.intentId === intentId);
+      if (!existingRecord) {
+        throw new Error(`Transaction record for pending intent '${intentId}' was not found.`);
+      }
 
       if (!approve) {
         this.pendingApprovals.delete(intentId);
@@ -419,8 +460,40 @@ export class RimbuxAutonomousAgent {
         return {
           intent: pending.intent,
           evaluation: pending.evaluation,
-          transactionRecord: existingRecord!,
+          transactionRecord: existingRecord,
           agentExplanation: "The human operator rejected the transaction and released the reserved funds.",
+        };
+      }
+
+      // Public read-only demo approval: record the decision without signing.
+      if (!this.signingBoundary.getPublicMetadata().publicKey) {
+        await this.spendingController.releaseReservation(
+          pending.evaluation.spendingCheck.reservationId
+        );
+        this.pendingApprovals.delete(intentId);
+        this.auditPersistence?.updatePendingApprovalStatus(intentId, "APPROVED");
+
+        if (existingRecord) {
+          existingRecord.status = "SIMULATED";
+          existingRecord.policyDecision = "ALLOW";
+          existingRecord.verificationNote =
+            "Human approval recorded in public read-only demo. No signing, broadcast, or spending occurred.";
+          this.persistTransactionRecord(existingRecord);
+        }
+
+        this.auditLogger.record(
+          "HUMAN_APPROVAL_SIMULATED",
+          "INFO",
+          { intentId, signingSkipped: true },
+          intentId
+        );
+
+        return {
+          intent: pending.intent,
+          evaluation: pending.evaluation,
+          transactionRecord: existingRecord,
+          agentExplanation:
+            "Human approval recorded. SIMULATED ONLY — no transaction was signed or broadcast.",
         };
       }
 
@@ -483,7 +556,7 @@ export class RimbuxAutonomousAgent {
       return {
         intent: pending.intent,
         evaluation: pending.evaluation,
-        transactionRecord: existingRecord!,
+        transactionRecord: existingRecord,
         signedEnvelope,
         agentExplanation: `The human operator approved the transaction; signed through the FunctionCall sandbox (${signedEnvelope.txHash}).`,
       };

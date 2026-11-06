@@ -1194,12 +1194,12 @@ main { padding-bottom: 64px !important; }
                   <div class="h-10 w-10 rounded-xl bg-near-green/15 border border-near-green/45 flex items-center justify-center text-near-green shrink-0 shadow-[0_0_16px_rgba(7, 239, 163,0.3)]">
                     <svg class="h-5 w-5"><use href="#icon-policy-shield"></use></svg>
                   </div>
-                  <div>
+                  <div class="min-w-0 flex-1">
                     <div class="text-xs font-extrabold tracking-wider uppercase text-white">POLICY</div>
                     <div class="text-[11px] text-emerald-100/85 mt-1 space-y-0.5 leading-snug">
                       <div>Access Control</div>
                       <div>Spending Limits</div>
-                      <div class="text-near-green font-mono text-[10px]" id="hudPolicySub">Risk Detection</div>
+                      <div class="text-near-green font-mono text-[10px]" id="hudPolicySub" style="white-space:normal; overflow-wrap:anywhere; line-height:1.3;">Risk Detection</div>
                     </div>
                   </div>
                 </div>
@@ -2565,7 +2565,7 @@ This page does not generate or hold a signing key. Any signing status shown here
               : 'bg-rose-500/20 text-rose-300 border-rose-500/40';
             return `
               <div class="p-3.5 rounded-xl bg-near-dark/85 border border-near-line font-mono space-y-1.5">
-                <div class="flex justify-between items-center"><span class="font-bold text-white">${tx.amountNear ?? '—'} NEAR &rarr; ${esc(tx.recipientId || '—')}</span><span class="text-[10px] px-2 py-0.5 rounded-full border ${pill} font-bold">${esc(tx.policyDecision || '—')} &bull; ${esc(tx.status || 'EVALUATED')}</span></div>
+                <div class="flex justify-between items-start gap-3"><span class="font-bold text-white min-w-0 flex-1 break-words">${tx.amountNear ?? '—'} NEAR &rarr; ${esc(tx.recipientId || '—')}</span><span class="text-[10px] w-[190px] min-w-[190px] shrink-0 min-h-[32px] inline-flex items-center justify-center text-center whitespace-normal break-words leading-tight px-2 py-1 rounded-full border ${pill} font-bold">${esc(tx.policyDecision || '—')} &bull; ${esc(tx.status || 'EVALUATED')}</span></div>
                 <div class="text-[11px] text-emerald-200/70">"${esc(tx.rawInstruction || '')}"</div>
                 <div class="text-[11px] text-emerald-100/90">${(tx.reasons || []).map(esc).join(' | ')}</div>
                 ${tx.txHash ? `<div class="text-emerald-700 font-semibold">TxHash: ${esc(tx.txHash)}</div>` : ''}
@@ -3353,10 +3353,10 @@ This page does not generate or hold a signing key. Any signing status shown here
 
         const authenticated = data.authenticated === true;
         if (status) {
-          status.textContent = authenticated ? "OPERATOR AUTHENTICATED" : "OPERATOR LOGIN REQUIRED";
+          status.textContent = authenticated ? "OPERATOR AUTHENTICATED" : "PUBLIC READ-ONLY · OPERATOR LOGIN OPTIONAL";
           status.className = authenticated
             ? "text-xs font-mono text-emerald-300"
-            : "text-xs font-mono text-amber-300";
+            : "text-xs font-mono text-sky-300";
         }
         if (form) form.classList.toggle("hidden", authenticated);
         if (logout) logout.classList.toggle("hidden", !authenticated);
@@ -3616,6 +3616,7 @@ header nav.nav-glass-pill .nav-pill-item[data-tab="approvals"] { gap: 7px; }
     dot.className = 'h-2 w-2 rounded-full';
     if (t.includes('AUTHENTICATED')) { label.textContent = 'Operator \u2713'; dot.classList.add('bg-near-green', 'is-ok'); status.style.display = 'none'; setOpen(false); }
     else if (t.includes('UNAVAILABLE')) { label.textContent = 'Operator Login'; dot.classList.add('is-bad'); status.style.display = ''; }
+    else if (t.includes('PUBLIC READ-ONLY')) { label.textContent = 'Public Read-only'; dot.classList.add('bg-sky-400'); status.style.display = ''; }
     else { label.textContent = 'Operator Login'; dot.classList.add('bg-amber-400', 'is-need'); status.style.display = ''; }
   };
   new MutationObserver(sync).observe(status, { childList: true, characterData: true, subtree: true, attributes: true });

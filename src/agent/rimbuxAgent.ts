@@ -71,6 +71,9 @@ export class RimbuxAutonomousAgent {
     this.transactionHistory =
       dependencies.auditPersistence?.getTransactionHistory() ?? [];
     this.nearClient = dependencies.nearClient ?? new NearTestnetClient();
+    // Restore reservations of still-pending approvals BEFORE the controller loads its
+    // ledger, so the in-memory status matches the database.
+    dependencies.auditPersistence?.restorePendingApprovalReservations();
     this.spendingController = new SpendingController(undefined, dependencies.auditPersistence);
     this.policyEngine = new DeterministicPolicyEngine();
     this.reputationEngine = new ReputationIntelligenceEngine(this.nearClient);
@@ -511,6 +514,32 @@ export class RimbuxAutonomousAgent {
     } finally {
       this.signingBoundary.disarmOneShotBroadcast?.(intentId);
     }
+  }
+
+  public async releaseQuarantinedReservation(
+    reservationId: string
+  ): Promise<{ released: boolean; reason: string }> {
+    const entry = this.auditPersistence
+      ?.getSpendingReservations()
+      .find((r) => r.reservationId === reservationId);
+    if (!entry) return { released: false, reason: "RESERVATION_NOT_FOUND" };
+    if (this.pendingApprovals.has(entry.intentId)) {
+      return { released: false, reason: "APPROVAL_STILL_PENDING" };
+    }
+    const record = this.transactionHistory.find((r) => r.intentId === entry.intentId);
+    if (record && record.status !== "BLOCKED_BY_POLICY") {
+      return { released: false, reason: `INTENT_NOT_BLOCKED:${record.status}` };
+    }
+    const result = await this.spendingController.releaseQuarantinedReservation(reservationId);
+    if (result.released) {
+      this.auditLogger.record(
+        "QUARANTINED_RESERVATION_RELEASED",
+        "WARNING",
+        { reservationId, intentId: entry.intentId },
+        entry.intentId
+      );
+    }
+    return result;
   }
 
   public getPendingApprovals(): PendingApprovalItem[] {

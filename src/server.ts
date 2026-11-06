@@ -214,6 +214,17 @@ app.get("/api/recovery", requireOperator, (_req, res) => {
   }
 });
 
+app.post("/api/recovery/release/:reservationId", requireOperator, async (req, res) => {
+  try {
+    const result = await rimbuxAgent.releaseQuarantinedReservation(
+      String(req.params.reservationId)
+    );
+    return res.status(result.released ? 200 : 409).json(result);
+  } catch (_err: unknown) {
+    return res.status(500).json({ error: "RECOVERY_RELEASE_FAILED" });
+  }
+});
+
 app.post("/api/agent/instruct", requireOperator, async (req, res) => {
   try {
     const { instruction } = req.body;

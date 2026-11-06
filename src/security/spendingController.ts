@@ -297,6 +297,24 @@ export class SpendingController {
     }
   }
 
+  public async releaseQuarantinedReservation(
+    reservationId: string
+  ): Promise<{ released: boolean; reason: string }> {
+    await this.acquireLock();
+    try {
+      const item = this.ledger.find((entry) => entry.reservationId === reservationId);
+      if (!item) return { released: false, reason: "RESERVATION_NOT_FOUND" };
+      if (item.status !== "QUARANTINED") {
+        return { released: false, reason: `NOT_QUARANTINED:${item.status}` };
+      }
+      this.persistence?.saveSpendingReservation({ ...item, status: "RELEASED" });
+      item.status = "RELEASED";
+      return { released: true, reason: "RELEASED" };
+    } finally {
+      this.releaseLock();
+    }
+  }
+
   public async releaseReservation(reservationId?: string): Promise<void> {
     if (!reservationId) return;
 

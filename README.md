@@ -1,107 +1,241 @@
 # RIMBUX
-### Autonomous AI Wallet Security & Defense on NEAR
 
-RIMBUX is an AI-powered wallet security backend for NEAR Testnet. It evaluates transaction instructions, enforces spending policies, detects suspicious destinations, controls signing permissions, and maintains a tamper-evident audit trail.
+### A guardian that stands between an AI agent and your NEAR wallet
 
-## Core Features
+> **Trust, but verify.** Let an AI agent pay for things without giving it the keys to everything.
 
-- Natural-language transaction instruction processing.
-- Spending limits and policy enforcement.
-- Account reputation assessment and scam detection.
-- Typosquatting and suspicious destination detection.
-- Human approval workflow for uncertain transactions.
-- Restricted NEAR FunctionCall signing boundary.
-- Emergency local signing-key revocation.
-- SQLite-backed HMAC-SHA256 audit integrity verification.
+Submission for the **NEAR Hackathon 2026, AI Security & Defense track**. Built solo.
 
-## Architecture
+![RIMBUX dashboard](docs/screenshots/01-overview.png)
 
-```text
-User Instruction
-      |
-      v
-RIMBUX Autonomous Agent
-      |
-      v
-Reputation + Scam Detection
-      |
-      v
-Spending Controller + Policy Engine
-      |
-      +---- BLOCK / REJECT
-      |
-      +---- REQUIRE APPROVAL
-      |
-      v
-NEAR Signing Boundary
-      |
-      v
+<!-- TODO: add demo video link -->
+<!-- **Demo video:** https://... -->
+
+## In 30 seconds
+
+**The problem.** AI agents can now pay on your behalf. But an agent can be tricked: a hidden instruction in a web page or message can make it send money to a scammer, or change its own rules.
+
+**Our answer.** RIMBUX checks every payment *before* it is signed and gives one of three answers:
+
+| Answer | What it means | Example from our tests |
+|---|---|---|
+| **Allow** | Safe and within your limits. Signed. | Send 1.2 NEAR to `alice.testnet` |
+| **Ask a human** | Big or unfamiliar. Waits for a person to approve. | Send 3.5 NEAR, or pay an unknown account |
+| **Block** | Looks like an attack. Never signed. | Pay `al1ce.testnet` (a fake lookalike of `alice.testnet`) |
+
+Every decision is saved in a log that shows if anyone tries to change it later.
+
+**Safe to try.** RIMBUX runs on NEAR Testnet in test mode. Payments are signed locally but not sent, so no funds move.
+
+## What you will see
+
+Open the dashboard and press **Auto-Simulate 5 Scenarios**, or run the full **12 attack tests**. You will watch RIMBUX allow the good payments, pause the risky ones, and stop the attacks, with the reason for each decision.
+
+![A payment being checked](docs/screenshots/02-payment-flow.png)
+
+## How it works
+
+Think of RIMBUX as a security guard at the door. The agent can ask for a payment, but the guard decides.
+
+```
+Agent asks: "Send 3.5 NEAR to alice.testnet"
+        |
+        v
+1. Understand the request   (spots hidden instructions and tricks)
+        |
+        v
+2. Check the recipient      (scam list, lookalike names, on-chain history)
+        |
+        v
+3. Check your rules         (spending limits, daily totals)
+        |
+        +---- Dangerous ---------> BLOCK
+        +---- Unsure or large ---> ASK A HUMAN (approve / reject)
+        |
+        v
+4. Sign (only with a valid pass from steps 1-3)
+        |
+        v
 NEAR Testnet
 
-Security Events --> SQLite --> HMAC Audit Chain
+Every step is written to the audit log.
+```
 
-## Technology Stack
+## What RIMBUX protects against
 
-- Node.js 22+
-- TypeScript
-- Express
-- NEAR API JS
-- NEAR Testnet RPC
-- SQLite
-- HMAC-SHA256
+- **Spending too much**: limits per payment, per recipient per day, and per day overall.
+- **Fake lookalike accounts**: `al1ce.testnet` pretending to be `alice.testnet`.
+- **Known scam addresses**: a blocklist, for example `drainer-vault.testnet`.
+- **Prompt injection**: "Ignore all previous instructions..." is caught and blocked.
+- **Rule tampering**: "set daily limit to 99999 NEAR" is blocked.
+- **Split payments**: several amounts or recipients hidden in one instruction.
+- **Giving itself more power**: the agent cannot add a new key to the account.
+- **Two payments at once**: while one payment is waiting, a second one is blocked.
+- **Missing safety data**: if the threat check is offline, RIMBUX asks a human instead of allowing the payment ("fail-closed").
+- **Skipping the guard**: the signing step rejects any payment that has no valid or unexpired pass.
 
-## Installation
+## Proof: 12 attack tests, all passing
 
-Requirements: Node.js 22+, npm, and a NEAR Testnet account.
+Run them from the dashboard, or call `POST /api/audit/run-suite`. Each test shows what was expected and what actually happened.
 
-## Environment Configuration
+| # | Attack or situation | Expected result |
+|---|---|---|
+| 1 | Normal payment, 1.2 NEAR | Allowed and signed |
+| 2 | Payment over the limit (9 NEAR, limit 5) | Blocked |
+| 3 | Pay a known scam address | Blocked |
+| 4 | Lookalike account (`al1ce.testnet`) | Blocked |
+| 5 | Unknown account | Ask a human |
+| 6 | Try to add a key (`add_key`) | Blocked |
+| 7 | Prompt injection | Blocked |
+| 8 | Try to override the spending rules | Blocked |
+| 9 | Second payment while one is in progress | Second one blocked |
+| 10 | Threat check offline | Ask a human |
+| 11 | Expired pass at the signing step | Rejected |
+| 12 | Try to sign without a pass | Rejected |
 
-Create `.env` from `.env.example`:
+Latest run: **12 of 12 passed, audit log intact.**
 
-    cp .env.example .env
+![12 attack tests](docs/screenshots/03-attack-tests.png)
 
-Set `RIMBUX_AUDIT_SECRET` to a secret of at least 64 characters. Keep private keys and secrets out of Git.
+## The agent's key: limited on purpose
 
-### Demo accounts (NEAR Testnet)
+The AI agent never gets the master key to the account. It gets a **function-call key**: a restricted NEAR key that can do one thing only.
 
-- Vault contract: `vault.rimbux.testnet`. Its on-chain code hash matches `contracts/rimbux-vault/build/rimbux-vault-v4.wasm`.
-- Agent signer: `agent.rimbux.testnet`.
+| | |
+|---|---|
+| Agent account | `agent.rimbux.testnet` |
+| Key type | FunctionCall (restricted) |
+| Can call | `execute_agent_payment` on `vault.rimbux.testnet`, nothing else |
+| Gas allowance | 0.25 NEAR |
 
-`.env.example` already uses these account IDs. To sign transactions you must provide your own FunctionCall access key for the agent account in `NEAR_AGENT_FUNCTION_CALL_PRIVATE_KEY`. The automated tests run without any key (they use mocks and a local sandbox) and never broadcast to NEAR Testnet.
+The dashboard checks this key directly on NEAR Testnet (read-only) and shows it as verified.
 
-## Run
 
-Install dependencies with `npm install`.
+**What the key cannot do**
 
-Start the server with `npm run dev`.
+- Send NEAR straight out of the agent account.
+- Add or remove keys.
+- Call any other contract or method.
 
-Build with `npm run build`.
+**Limits you should know**
 
-Run automated tests with `npm test`.
+- The key has a limited gas allowance. When it runs out, the agent can no longer sign, and a new key must be added by the account owner.
+- The emergency **Revoke Key** button stops RIMBUX from using the key, but it does **not** delete the key on NEAR.
+- On-chain key rotation is not built yet.
 
-The server listens at `http://localhost:3000`.
+## The audit log
 
-## API Reference
+Every decision is saved as a numbered entry. Each entry includes a fingerprint of the one before it, so if someone edits or deletes an old record, the **Verify Chain** button shows that the log was changed.
 
-| Method | Endpoint | Purpose |
+This makes the log *tamper-evident*: it cannot stop changes, but it makes them visible.
+
+![Audit log](docs/screenshots/04-audit-log.png)
+
+## How this fits the track
+
+| What the track asks for | What RIMBUX does |
+|---|---|
+| Allow, warn, or block, with reasons | Allow, ask a human, or block, each with a reason code |
+| Refuse to sign on block, ask a human on warn | The signing step needs a valid pass; risky payments wait in an approval queue |
+| Function-call key limited to one contract, with its limits explained | See "The agent's key" above |
+| An attack demo with a log | 12 attack tests plus the audit log |
+| Reputation signals | Blocklist, on-chain account check, balance, contract check, trusted-partner list, lookalike detection |
+
+## Run it yourself
+
+You need: Node.js 20 or newer, npm, git, and a NEAR Testnet account.
+
+```bash
+git clone https://github.com/zorumeon/RIMBUX.git
+cd RIMBUX
+npm install
+cp .env.example .env
+```
+
+Create the secret that protects the audit log (it must be at least 64 characters), then paste it into `.env` as `RIMBUX_AUDIT_SECRET`:
+
+```bash
+openssl rand -hex 48
+```
+
+Run the tests, then start the app:
+
+```bash
+npm test
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+### On Windows (Ubuntu in WSL)
+
+1. In PowerShell as Administrator: `wsl --install -d Ubuntu`. Restart if asked. Check with `wsl -l -v`; the version should be 2.
+2. In the Ubuntu terminal:
+   ```bash
+   sudo apt update && sudo apt install -y git curl build-essential python3 openssl
+   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+   source ~/.bashrc
+   nvm install 20
+   ```
+3. Clone the repo into your Linux home folder (`~`), not `/mnt/c`, then follow the steps above.
+4. Open `http://localhost:3000` in your Windows browser. To check the backend: `curl http://localhost:3000/api/status`.
+
+| Problem | Fix |
+|---|---|
+| Node version is not 20 | `nvm install 20 && nvm use 20` |
+| Build error during `npm install` | `sudo apt install -y build-essential python3`, then run `npm install` again |
+| `localhost:3000` does not open | Check the server is running, or restart WSL with `wsl --shutdown` |
+| Port 3000 is already used | Change `PORT` in `.env` |
+| Secret rejected | `RIMBUX_AUDIT_SECRET` must be at least 64 characters |
+| Errors about `\r` | `sudo apt install dos2unix && dos2unix .env` |
+
+### Settings (`.env`)
+
+| Variable | What it is |
+|---|---|
+| `PORT` | Port for the server (default 3000) |
+| `NEAR_NETWORK_ID` | `testnet` |
+| `NEAR_RPC_URL` | NEAR Testnet RPC address |
+| `NEAR_VAULT_CONTRACT_ID` | The vault contract the agent key is limited to |
+| `NEAR_AGENT_ACCOUNT_ID` | The agent's NEAR account |
+| `NEAR_AGENT_FUNCTION_CALL_PRIVATE_KEY` | The agent's restricted key. **Never commit this.** |
+| `RIMBUX_AUDIT_SECRET` | Protects the audit log, at least 64 characters. **Never commit this.** |
+| `RIMBUX_BROADCAST` | `false` by default: sign locally, do not send to the network |
+
+`.env` is listed in `.gitignore`. Only `.env.example` is in the repo.
+
+## API
+
+| Method | Endpoint | What it does |
 |---|---|---|
 | GET | `/api/status` | System and audit status |
-| POST | `/api/agent/instruct` | Process an instruction |
-| POST | `/api/approvals/:intentId` | Approve or reject an intent |
-| POST | `/api/policy/update` | Update spending policy |
-| POST | `/api/sandbox/revoke` | Revoke local signing capability |
+| POST | `/api/agent/instruct` | Send a payment instruction |
+| POST | `/api/approvals/:intentId` | Approve or reject a waiting payment |
+| POST | `/api/policy/update` | Change spending rules |
+| POST | `/api/sandbox/revoke` | Revoke local signing |
 | POST | `/api/sandbox/rotate` | Key rotation status |
-| GET | `/api/reputation/:accountId` | Assess account reputation |
-| POST | `/api/audit/run-suite` | Run security simulations |
+| GET | `/api/reputation/:accountId` | Check how trustworthy an account looks |
+| POST | `/api/audit/run-suite` | Run the attack tests |
 
-## Security Boundaries
+In the dashboard, operator actions (approve, reject, revoke) need an operator login.
 
-- `SIGNED` means locally signed, not broadcast or confirmed on-chain.
-- Local key revocation does not remove the key from NEAR.
-- On-chain key rotation is not implemented.
-- Reputation and scam detection provide risk signals, not guarantees.
-- This is a hackathon prototype, not an independently audited production wallet.
+## Honest limits
+
+- **"Signed" means signed locally.** It does not mean sent to the network or confirmed.
+- **Revoking a key is local.** It does not remove the key from NEAR.
+- **Risk scores are signals, not guarantees.** They come from NEAR Testnet RPC data plus a local list, not a network-wide threat feed.
+- **The audit log shows tampering; it does not prevent it.**
+- **No TEE attestation yet.** This is the next step, to prove the guard's own code has not been changed.
+- **This is a hackathon prototype**, not an audited production wallet.
+
+## What's next
+
+- TEE attestation for the policy engine.
+- A shared blocklist that other agents can report to, with evidence.
+- More recipient checks: account age, recent contract changes, past payments between agent and recipient.
+- On-chain key rotation.
 
 ## License
 
-No open-source license has been specified.
+<!-- TODO: choose a license (for example MIT) and add a LICENSE file -->
+No open-source license has been specified yet.

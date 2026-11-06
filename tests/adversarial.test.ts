@@ -371,7 +371,8 @@ async function runAdversarialSecuritySuite() {
       "mock-agent.testnet",
       "mock-vault.testnet",
       testKey,
-      mockProvider as any
+      mockProvider as any,
+      false
     );
 
     const result = await boundary.signAuthorizedVaultIntent(

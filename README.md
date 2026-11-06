@@ -252,8 +252,7 @@ Live operator controls and signing operations require the appropriate authentica
 
 ## License
 
-<!-- TODO: choose a license (for example MIT) and add a LICENSE file -->
-No open-source license has been specified yet.
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
 
 ## Testnet Transaction Evidence
 

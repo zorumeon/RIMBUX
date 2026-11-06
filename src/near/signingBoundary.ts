@@ -8,6 +8,7 @@ import {
 } from "../types";
 import { DeterministicPolicyEngine } from "../security/policyEngine";
 import { broadcastAndConfirm } from "./broadcast";
+import { readNextSequenceNonce } from "./sequenceNonce";
 
 const GAS = BigInt(process.env.RIMBUX_GAS || "100000000000000"); // 100 Tgas: vault execution + transfer + 30 Tgas callback
 const ZERO_DEPOSIT = BigInt(0);
@@ -54,6 +55,7 @@ export interface SignedTransactionEnvelope {
     recipientId: string;
     amountYocto: string;
     intentNonce: string;
+    sequenceNonce: string;
     purposeDigest: string;
   };
   gasTgas: number;
@@ -227,6 +229,11 @@ export class SandboxedSigningBoundary {
         gasPrice.gas_price
       );
 
+      const sequenceNonce = await readNextSequenceNonce(
+        this.provider,
+        this.vaultContractId
+      );
+
       const block = await this.provider.block({ finality: "final" });
       const nonce = BigInt(accessKey.nonce) + BigInt(1);
       const blockHash = utils.serialize.base_decode(block.header.hash);
@@ -240,6 +247,7 @@ export class SandboxedSigningBoundary {
         recipientId: intent.recipientId,
         amountYocto: intent.amountYocto,
         intentNonce: intent.intentId,
+        sequenceNonce,
         purposeDigest,
       };
 

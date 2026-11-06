@@ -38,3 +38,4 @@ public/*.pre-auth-ui
 *.before-gas
 RIMBUX-CLAUDE-REVIEW.zip
 AI_REVIEW_BRIEF.md
+contracts/rimbux-vault/build/

@@ -88,6 +88,15 @@ export class RimbuxAutonomousAgent {
       dependencies.auditPersistence ?? new RimbuxPersistence(":memory:"),
       dependencies.auditSecret
     );
+
+    this.auditPersistence?.restorePendingApprovalReservations();
+
+    const restoredApprovals =
+      this.auditPersistence?.getPendingApprovals<PendingApprovalItem>() ?? [];
+
+    for (const approval of restoredApprovals) {
+      this.pendingApprovals.set(approval.intentId, approval.payload);
+    }
   }
 
   public parseNaturalLanguageInstruction(instruction: string): ExtractedTransactionIntent {
@@ -276,11 +285,18 @@ export class RimbuxAutonomousAgent {
     }
 
     if (evaluation.decision === "REQUIRE_APPROVAL") {
-      this.pendingApprovals.set(intent.intentId, {
+      const pendingApproval: PendingApprovalItem = {
         intent,
         evaluation,
         createdAt: Date.now(),
-      });
+      };
+
+      this.pendingApprovals.set(intent.intentId, pendingApproval);
+      this.auditPersistence?.savePendingApproval(
+        intent.intentId,
+        pendingApproval,
+        pendingApproval.createdAt
+      );
 
       const record: TransactionRecord = {
         intentId: intent.intentId,
@@ -384,6 +400,7 @@ export class RimbuxAutonomousAgent {
 
       if (!approve) {
         this.pendingApprovals.delete(intentId);
+        this.auditPersistence?.updatePendingApprovalStatus(intentId, "REJECTED");
         await this.spendingController.releaseReservation(pending.evaluation.spendingCheck.reservationId);
 
         if (existingRecord) {
@@ -416,6 +433,7 @@ export class RimbuxAutonomousAgent {
           pending.evaluation.spendingCheck.reservationId
         );
         this.pendingApprovals.delete(intentId);
+        this.auditPersistence?.updatePendingApprovalStatus(intentId, "QUARANTINED");
 
         if (existingRecord) {
           existingRecord.status = "FAILED_VERIFICATION";
@@ -438,6 +456,7 @@ export class RimbuxAutonomousAgent {
         pending.evaluation.spendingCheck.reservationId
       );
       this.pendingApprovals.delete(intentId);
+      this.auditPersistence?.updatePendingApprovalStatus(intentId, "APPROVED");
 
       if (existingRecord) {
         existingRecord.status = signedEnvelope.lifecycleStatus;

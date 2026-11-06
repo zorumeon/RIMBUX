@@ -79,6 +79,74 @@ export class RimbuxPersistence {
     `);
   }
 
+  public savePendingApproval<T>(
+    intentId: string,
+    payload: T,
+    createdAt: number
+  ): void {
+    this.db.prepare(`
+      INSERT INTO pending_approvals (intent_id, payload, created_at, status)
+      VALUES (@intentId, @payload, @createdAt, 'PENDING')
+      ON CONFLICT(intent_id) DO UPDATE SET
+        payload = excluded.payload,
+        created_at = excluded.created_at,
+        status = 'PENDING'
+    `).run({
+      intentId,
+      payload: JSON.stringify(payload),
+      createdAt,
+    });
+  }
+
+  public restorePendingApprovalReservations(): number {
+    const result = this.db.prepare(`
+      UPDATE spending_reservations
+      SET status = 'RESERVED'
+      WHERE status = 'QUARANTINED'
+        AND intent_id IN (
+          SELECT intent_id
+          FROM pending_approvals
+          WHERE status = 'PENDING'
+        )
+    `).run();
+
+    return result.changes;
+  }
+
+  public getPendingApprovals<T>(): Array<{
+    intentId: string;
+    payload: T;
+    createdAt: number;
+  }> {
+    const rows = this.db.prepare(`
+      SELECT intent_id AS intentId, payload, created_at AS createdAt
+      FROM pending_approvals
+      WHERE status = 'PENDING'
+      ORDER BY created_at ASC
+    `).all() as Array<{
+      intentId: string;
+      payload: string;
+      createdAt: number;
+    }>;
+
+    return rows.map((row) => ({
+      intentId: row.intentId,
+      payload: JSON.parse(row.payload) as T,
+      createdAt: row.createdAt,
+    }));
+  }
+
+  public updatePendingApprovalStatus(
+    intentId: string,
+    status: "APPROVED" | "REJECTED" | "QUARANTINED"
+  ): void {
+    this.db.prepare(`
+      UPDATE pending_approvals
+      SET status = @status
+      WHERE intent_id = @intentId AND status = 'PENDING'
+    `).run({ intentId, status });
+  }
+
   public getAuditEvents(): StoredAuditEvent[] {
     return this.db
       .prepare("SELECT * FROM audit_events ORDER BY sequence ASC")

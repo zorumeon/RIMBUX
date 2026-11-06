@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { Worker, KeyPair } from "near-workspaces";
+import { Worker, KeyPair, parseNEAR } from "near-workspaces";
 
 test("RIMBUX Vault deploys and initializes on NEAR Sandbox", async () => {
   const worker = await Worker.init();
@@ -9,7 +9,7 @@ test("RIMBUX Vault deploys and initializes on NEAR Sandbox", async () => {
     const root = worker.rootAccount;
     const agentKey = KeyPair.fromRandom("ed25519");
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux_vault.wasm"
+      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {
@@ -56,7 +56,7 @@ test("RIMBUX Vault enforces owner-only emergency pause", async () => {
     const attacker = await root.devCreateAccount();
 
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux_vault.wasm"
+      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {
@@ -107,7 +107,7 @@ test("RIMBUX Vault restricts agent key and recipient policy updates to owner", a
     const replacementKey = KeyPair.fromRandom("ed25519");
 
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux_vault.wasm"
+      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {
@@ -184,7 +184,7 @@ test("RIMBUX Vault executes payment only through authorized agent FunctionCall k
     const agentKey = KeyPair.fromRandom("ed25519");
 
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux_vault.wasm"
+      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {
@@ -219,6 +219,7 @@ test("RIMBUX Vault executes payment only through authorized agent FunctionCall k
       recipientId: merchant.accountId,
       amountYocto: "1000000000000000000000000",
       intentNonce: "rimbux-payment-0001",
+      sequenceNonce: "1",
       purposeDigest: "a".repeat(64),
     };
 
@@ -295,7 +296,7 @@ test("RIMBUX Vault enforces per-transaction and daily spending limits", async ()
     const agentKey = KeyPair.fromRandom("ed25519");
 
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux_vault.wasm"
+      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {
@@ -338,6 +339,7 @@ test("RIMBUX Vault enforces per-transaction and daily spending limits", async ()
           recipientId: merchant.accountId,
           amountYocto: "3000000000000000000000000",
           intentNonce: "rimbux-limit-over-0001",
+          sequenceNonce: "1",
           purposeDigest: digest,
         },
         gas
@@ -352,6 +354,7 @@ test("RIMBUX Vault enforces per-transaction and daily spending limits", async ()
         recipientId: merchant.accountId,
         amountYocto: "2000000000000000000000000",
         intentNonce: "rimbux-limit-valid-0001",
+        sequenceNonce: "1",
         purposeDigest: digest,
       },
       gas
@@ -372,6 +375,7 @@ test("RIMBUX Vault enforces per-transaction and daily spending limits", async ()
           recipientId: merchant.accountId,
           amountYocto: "2000000000000000000000000",
           intentNonce: "rimbux-limit-daily-0001",
+          sequenceNonce: "2",
           purposeDigest: digest,
         },
         gas
@@ -400,7 +404,7 @@ test("RIMBUX Vault enforces recipient allowlist and blocklist", async () => {
     const agentKey = KeyPair.fromRandom("ed25519");
 
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux_vault.wasm"
+      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {
@@ -433,6 +437,7 @@ test("RIMBUX Vault enforces recipient allowlist and blocklist", async () => {
       recipientId: merchant.accountId,
       amountYocto,
       intentNonce: nonce,
+      sequenceNonce: "1",
       purposeDigest: digest,
     });
 
@@ -497,7 +502,7 @@ test("RIMBUX Vault blocks agent payments during emergency pause", async () => {
     const agentKey = KeyPair.fromRandom("ed25519");
 
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux_vault.wasm"
+      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {
@@ -532,6 +537,7 @@ test("RIMBUX Vault blocks agent payments during emergency pause", async () => {
       recipientId: merchant.accountId,
       amountYocto: "1000000000000000000000000",
       intentNonce: "rimbux-emergency-pause-01",
+      sequenceNonce: "1",
       purposeDigest: "d".repeat(64),
     };
 
@@ -568,6 +574,96 @@ test("RIMBUX Vault blocks agent payments during emergency pause", async () => {
       {}
     );
     assert.equal(status.paused, false);
+  } finally {
+    await worker.tearDown();
+  }
+});
+
+test("RIMBUX Vault rejects payment that would consume its storage reserve", async () => {
+  const worker = await Worker.init();
+  try {
+    const root = worker.rootAccount;
+    const agent = await root.devCreateAccount();
+    const merchant = await root.devCreateAccount();
+    const agentKey = KeyPair.fromRandom("ed25519");
+
+    const wasmPath = path.resolve(
+      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
+    );
+
+    const vault = await root.devDeploy(wasmPath, {
+      method: "init",
+      args: {
+        ownerId: root.accountId,
+        agentAccountId: agent.accountId,
+        authorizedAgentKey: agentKey.getPublicKey().toString(),
+        maxPerTxNear: 1,
+        dailyLimitNear: 3,
+      },
+    });
+
+    await agent.updateAccessKey(agentKey, {
+      nonce: 0,
+      permission: {
+        FunctionCall: {
+          allowance: "100000000000000000000000",
+          receiver_id: vault.accountId,
+          method_names: ["execute_agent_payment"],
+        },
+      },
+    });
+
+    await root.call(vault, "update_recipient_policy", {
+      accountId: merchant.accountId,
+      allowed: true,
+      blocked: false,
+    });
+
+    // Simulate the low-balance condition observed on NEAR Testnet.
+    const vaultAccount = await vault.accountView();
+    await vault.updateAccount({
+      amount: parseNEAR("6"),
+      locked: vaultAccount.locked,
+      code_hash: vaultAccount.code_hash,
+      storage_usage: vaultAccount.storage_usage,
+      version: "V1",
+    });
+
+    const before = await vault.view<{
+      currentDaySpendYocto: string;
+    }>("get_vault_status", {});
+
+    assert.equal(before.currentDaySpendYocto, "0");
+
+    // 6 NEAR cannot cover both the ~5.7 NEAR storage reserve and
+    // a 1 NEAR payment. The contract must reject before transferring.
+    await assert.rejects(
+      agent.call(
+        vault,
+        "execute_agent_payment",
+        {
+          recipientId: merchant.accountId,
+          amountYocto: "1000000000000000000000000",
+          intentNonce: "rimbux-low-balance-0001",
+          sequenceNonce: "1",
+          purposeDigest: "e".repeat(64),
+        },
+        {
+          signWithKey: agentKey,
+          gas: BigInt("100000000000000"),
+        }
+      )
+    );
+
+    const after = await vault.view<{
+      currentDaySpendYocto: string;
+    }>("get_vault_status", {});
+
+    assert.equal(
+      after.currentDaySpendYocto,
+      "0",
+      "Rejected payment must not consume the daily spending allowance"
+    );
   } finally {
     await worker.tearDown();
   }

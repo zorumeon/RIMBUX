@@ -42,7 +42,7 @@ Security Events --> SQLite --> HMAC Audit Chain
 
 ## Technology Stack
 
-- Node.js 20+
+- Node.js 22+
 - TypeScript
 - Express
 - NEAR API JS
@@ -52,7 +52,7 @@ Security Events --> SQLite --> HMAC Audit Chain
 
 ## Installation
 
-Requirements: Node.js 20+, npm, and a NEAR Testnet account.
+Requirements: Node.js 22+, npm, and a NEAR Testnet account.
 
 ## Environment Configuration
 

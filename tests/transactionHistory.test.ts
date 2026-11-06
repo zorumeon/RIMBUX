@@ -86,6 +86,7 @@ test("agent restores transaction history after database restart", () => {
     const { RimbuxAutonomousAgent } = require("../src/agent/rimbuxAgent");
     const agent = new RimbuxAutonomousAgent({
       auditPersistence: secondDb,
+      signingBoundary: {} as any,
     });
 
     assert.deepEqual(agent.getTransactionHistory(), [record]);

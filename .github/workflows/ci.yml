@@ -36,3 +36,4 @@ jobs:
         run: npm test
         env:
           RIMBUX_BROADCAST: "false"
+          RIMBUX_AUDIT_SECRET: "rimbux-ci-only-audit-secret-not-for-production-2026"

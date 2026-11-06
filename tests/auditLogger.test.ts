@@ -71,6 +71,15 @@ test("audit logger detects database tampering", () => {
   }
 });
 
+test("audit logger fails closed on an empty or too-short secret", () => {
+  for (const invalidSecret of ["", "a".repeat(63)]) {
+    assert.throws(
+      () => new TamperEvidentAuditLogger(undefined, invalidSecret),
+      /RIMBUX_AUDIT_SECRET is missing or invalid\. A secret of at least 64 characters is required\./
+    );
+  }
+});
+
 test("audit logger rejects an incorrect HMAC secret", () => {
   const file = createTemporaryDatabase();
 

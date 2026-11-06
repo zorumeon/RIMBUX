@@ -3,8 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { RimbuxAutonomousAgent } from "../src/agent/rimbuxAgent";
 import { RimbuxPersistence } from "../src/security/persistence";
 import { TransactionRecord } from "../src/types";
+import { TEST_AUDIT_SECRET, createUnusedSigningBoundary } from "./helpers/fixtures";
 
 function createTemporaryDatabase(): string {
   return path.join(
@@ -83,10 +85,10 @@ test("agent restores transaction history after database restart", () => {
     firstDb.close();
 
     const secondDb = new RimbuxPersistence(file);
-    const { RimbuxAutonomousAgent } = require("../src/agent/rimbuxAgent");
     const agent = new RimbuxAutonomousAgent({
       auditPersistence: secondDb,
-      signingBoundary: {} as any,
+      auditSecret: TEST_AUDIT_SECRET,
+      signingBoundary: createUnusedSigningBoundary(),
     });
 
     assert.deepEqual(agent.getTransactionHistory(), [record]);

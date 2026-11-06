@@ -12,6 +12,7 @@ import {
   SignedTransactionEnvelope,
   assertSufficientFunctionCallAllowance,
 } from "../src/near/signingBoundary";
+import { TEST_AUDIT_SECRET } from "./helpers/fixtures";
 
 async function runAdversarialSecuritySuite() {
   console.log("==================================================================");
@@ -94,6 +95,7 @@ async function runAdversarialSecuritySuite() {
 
   const agent = new RimbuxAutonomousAgent({
     nearClient: new MockNearTestnetClient(),
+    auditSecret: TEST_AUDIT_SECRET,
     signingBoundary: mockSigningBoundary,
   });
   let passed = 0;

@@ -36,4 +36,6 @@ jobs:
         run: npm test
         env:
           RIMBUX_BROADCAST: "false"
-          RIMBUX_AUDIT_SECRET: "rimbux-ci-only-audit-secret-not-for-production-2026"
+          # CI-only dummy value (>= 64 characters, as required by the audit logger).
+          # Not a real credential and must never be reused outside CI.
+          RIMBUX_AUDIT_SECRET: "rimbux-ci-only-audit-secret-not-for-production-use-2026-dummy-value"

@@ -86,7 +86,7 @@ export class RimbuxAutonomousAgent {
       );
     this.auditLogger = new TamperEvidentAuditLogger(
       dependencies.auditPersistence ?? new RimbuxPersistence(":memory:"),
-      dependencies.auditSecret ?? process.env.RIMBUX_AUDIT_SECRET
+      dependencies.auditSecret
     );
 
     this.auditPersistence?.restorePendingApprovalReservations();

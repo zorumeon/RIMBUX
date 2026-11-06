@@ -31,7 +31,7 @@ export class TamperEvidentAuditLogger {
   ) {
     if (!secret || secret.length < 64) {
       throw new Error(
-        "RIMBUX_AUDIT_SECRET is missing or invalid. A secret of at least 32 bytes is required."
+        "RIMBUX_AUDIT_SECRET is missing or invalid. A secret of at least 64 characters is required."
       );
     }
 

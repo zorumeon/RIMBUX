@@ -5,6 +5,7 @@ import {
   RimbuxAutonomousAgent,
 } from "../src/agent/rimbuxAgent";
 import { NearTestnetClient } from "../src/near/nearClient";
+import { TEST_AUDIT_SECRET } from "./helpers/fixtures";
 
 test("prompt injection is blocked before reputation, reservation, and signing", async () => {
   let reputationCalls = 0;
@@ -15,6 +16,7 @@ test("prompt injection is blocked before reputation, reservation, and signing", 
 
   const agent = new RimbuxAutonomousAgent({
     nearClient,
+    auditSecret: TEST_AUDIT_SECRET,
     signingBoundary: {
       async signAuthorizedVaultIntent() {
         signingCalls++;

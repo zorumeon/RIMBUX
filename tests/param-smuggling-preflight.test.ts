@@ -5,6 +5,7 @@ import {
   RimbuxAutonomousAgent,
 } from "../src/agent/rimbuxAgent";
 import { NearTestnetClient } from "../src/near/nearClient";
+import { TEST_AUDIT_SECRET } from "./helpers/fixtures";
 
 test("multiple transfer parameters are blocked before reputation, reservation, and signing", async () => {
   let reputationCalls = 0;
@@ -13,6 +14,7 @@ test("multiple transfer parameters are blocked before reputation, reservation, a
 
   const agent = new RimbuxAutonomousAgent({
     nearClient: new NearTestnetClient(),
+    auditSecret: TEST_AUDIT_SECRET,
     signingBoundary: {
       async signAuthorizedVaultIntent() {
         signingCalls++;

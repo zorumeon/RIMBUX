@@ -261,7 +261,7 @@ RIMBUX has been tested with real transactions on NEAR Testnet.
 | Evidence | Result | NEAR Explorer |
 |---|---|---|
 | Test payment — 0.01 NEAR | FINAL / SuccessValue | [View transaction](https://testnet.nearblocks.io/txns/8Z4eHUx7M2pWG3H7XUgX2QLtym7VZtTtWTi1gDboq6Aq) |
-| Recipient allowlist update | FINAL / SuccessValue | [View transaction](https://testnet.nearblocks.io/txns/2ibEeodsnbKY5dgqozuZaxohzcmegc1fbc6yowAXQrg6) |
+| Recipient allowlist update | FINAL / SuccessValue | [View transaction](https://testnet.nearblocks.io/txns/DmQCXcZxgt1BT8XJQqoYq3JppeJPnk3h8dGHdPvCXGB9R) |
 
 **Testnet accounts**
 - Vault contract: `vault.rimbux.testnet`

@@ -62,6 +62,13 @@ Create `.env` from `.env.example`:
 
 Set `RIMBUX_AUDIT_SECRET` to a secret of at least 64 characters. Keep private keys and secrets out of Git.
 
+### Demo accounts (NEAR Testnet)
+
+- Vault contract: `vault.rimbux.testnet`. Its on-chain code hash matches `contracts/rimbux-vault/build/rimbux-vault-v4.wasm`.
+- Agent signer: `agent.rimbux.testnet`.
+
+`.env.example` already uses these account IDs. To sign transactions you must provide your own FunctionCall access key for the agent account in `NEAR_AGENT_FUNCTION_CALL_PRIVATE_KEY`. The automated tests run without any key (they use mocks and a local sandbox) and never broadcast to NEAR Testnet.
+
 ## Run
 
 Install dependencies with `npm install`.

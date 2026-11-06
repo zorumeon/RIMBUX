@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "ts-node src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "test": "node --test -r ts-node/register tests/*.test.ts"
+    "test": "node --test -r ts-node/register tests/*.test.ts",
+    "test:sandbox": "node --test -r ts-node/register tests/*.sandbox.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

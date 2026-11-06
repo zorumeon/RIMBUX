@@ -116,7 +116,7 @@ app.get("/api/public-status", async (_req, res) => {
     );
 
     return res.json({
-      agentStatus: keyMeta.revoked ? "REVOKED_LOCKDOWN" : "ACTIVE_GUARDED",
+      agentStatus: !keyMeta.publicKey ? "READ_ONLY" : keyMeta.revoked ? "REVOKED_LOCKDOWN" : "ACTIVE_GUARDED",
       network: {
         networkId: rimbuxAgent.nearClient.networkId,
         vaultContractId: rimbuxAgent.nearClient.vaultContractId,
@@ -162,15 +162,26 @@ app.get("/api/public-testnet-check", async (_req, res) => {
   }
 });
 
-app.get("/api/status", requireOperator, async (_req, res) => {
+app.get("/api/status", async (_req, res) => {
   const keyMeta = rimbuxAgent.signingBoundary.getPublicMetadata();
-  const keyChainCheck = await rimbuxAgent.nearClient.inspectAccessKeyPermissions(
-    rimbuxAgent.nearClient.agentAccountId,
-    keyMeta.publicKey
-  );
+  const keyChainCheck = keyMeta.publicKey
+    ? await rimbuxAgent.nearClient.inspectAccessKeyPermissions(
+        rimbuxAgent.nearClient.agentAccountId,
+        keyMeta.publicKey
+      )
+    : {
+        verifiedOnChain: false,
+        verificationStatus: "NOT_FOUND" as const,
+        rpcReachable: false,
+        permissionType: "NotFound" as const,
+        receiverId: null,
+        methodNames: [],
+        allowanceNear: null,
+        error: "READ_ONLY_MODE_NO_SIGNING_KEY",
+      };
 
   res.json({
-    agentStatus: keyMeta.revoked ? "REVOKED_LOCKDOWN" : "ACTIVE_GUARDED",
+    agentStatus: !keyMeta.publicKey ? "READ_ONLY" : keyMeta.revoked ? "REVOKED_LOCKDOWN" : "ACTIVE_GUARDED",
     network: {
       networkId: rimbuxAgent.nearClient.networkId,
       rpcUrl: rimbuxAgent.nearClient.rpcUrl,

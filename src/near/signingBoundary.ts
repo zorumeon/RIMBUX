@@ -66,7 +66,7 @@ export interface SignedTransactionEnvelope {
 }
 
 export class SandboxedSigningBoundary {
-  private readonly keyPair: KeyPair;
+  private readonly keyPair: KeyPair | null;
   private readonly provider: Pick<Provider, "query" | "block"> & {
     gasPrice: (blockId: any) => ReturnType<Provider["gasPrice"]>;
   };
@@ -89,8 +89,8 @@ export class SandboxedSigningBoundary {
     },
     broadcastEnabled = process.env.RIMBUX_BROADCAST === "true"
   ) {
-    if (!privateKeyEnv || !privateKeyEnv.startsWith("ed25519:")) {
-      throw new Error("SIGNING_KEY_MISSING: A valid NEAR FunctionCall private key is required.");
+    if (privateKeyEnv && !privateKeyEnv.startsWith("ed25519:")) {
+      throw new Error("SIGNING_KEY_INVALID: A valid NEAR FunctionCall private key is required.");
     }
 
     if (!agentAccountId || !vaultContractId || agentAccountId === vaultContractId) {
@@ -101,7 +101,7 @@ export class SandboxedSigningBoundary {
     this.vaultContractId = vaultContractId;
     this.networkId = process.env.NEAR_NETWORK_ID || "testnet";
     this.broadcastEnabled = broadcastEnabled;
-    this.keyPair = KeyPair.fromString(privateKeyEnv as any);
+    this.keyPair = privateKeyEnv ? KeyPair.fromString(privateKeyEnv as any) : null;
     this.provider = provider || new JsonRpcProvider({
       url: process.env.NEAR_RPC_URL || "https://rpc.testnet.near.org",
     });
@@ -109,7 +109,7 @@ export class SandboxedSigningBoundary {
 
   public getPublicMetadata(): SandboxKeyMetadata {
     return {
-      publicKey: this.keyPair.getPublicKey().toString(),
+      publicKey: this.keyPair?.getPublicKey().toString() ?? "",
       permissionScope: "FunctionCall",
       receiverContractId: this.vaultContractId,
       allowedMethods: [...this.allowedMethods],
@@ -117,7 +117,7 @@ export class SandboxedSigningBoundary {
       canTransferNativeNearDirectly: false,
       canDeployContracts: false,
       canModifyAccessKeys: false,
-      revoked: this.revoked,
+      revoked: this.revoked || !this.keyPair,
     };
   }
 
@@ -168,6 +168,10 @@ export class SandboxedSigningBoundary {
     authToken: PolicyAuthorizationToken | undefined,
     policyEngine: DeterministicPolicyEngine
   ): Promise<SignedTransactionEnvelope> {
+    if (!this.keyPair) {
+      throw new Error("SIGNING_KEY_MISSING: Signing is unavailable in read-only mode.");
+    }
+
     if (this.revoked) {
       throw new Error("SANDBOX_KEY_REVOKED: The FunctionCall access key has been revoked locally.");
     }
@@ -201,7 +205,7 @@ export class SandboxedSigningBoundary {
     }
 
     try {
-      const publicKey = this.keyPair.getPublicKey().toString();
+      const publicKey = this.keyPair!.getPublicKey().toString();
 
       const accessKey = await this.provider.query({
         request_type: "view_access_key",
@@ -246,7 +250,7 @@ export class SandboxedSigningBoundary {
       const signer = await InMemorySigner.fromKeyPair(
         this.networkId,
         this.agentAccountId,
-        this.keyPair
+        this.keyPair!
       );
 
       const action = transactions.functionCall(

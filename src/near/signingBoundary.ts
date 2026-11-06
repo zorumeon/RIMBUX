@@ -54,6 +54,7 @@ export interface SignedTransactionEnvelope {
     recipientId: string;
     amountYocto: string;
     intentNonce: string;
+    sequenceNonce: string;
     purposeDigest: string;
   };
   gasTgas: number;
@@ -240,10 +241,30 @@ export class SandboxedSigningBoundary {
         .update(intent.rawInstruction, "utf8")
         .digest("hex");
 
+      const sequenceResult = await this.provider.query({
+        request_type: "call_function",
+        finality: "final",
+        account_id: this.vaultContractId,
+        method_name: "get_next_sequence_nonce",
+        args_base64: Buffer.from("{}").toString("base64"),
+      }) as any;
+
+      const sequenceNonce = JSON.parse(
+        Buffer.from(sequenceResult.result).toString("utf8")
+      );
+
+      if (
+        typeof sequenceNonce !== "string" ||
+        !/^[1-9][0-9]{0,39}$/.test(sequenceNonce)
+      ) {
+        throw new Error("INVALID_CONTRACT_SEQUENCE_NONCE");
+      }
+
       const args = {
         recipientId: intent.recipientId,
         amountYocto: intent.amountYocto,
         intentNonce: intent.intentId,
+        sequenceNonce,
         purposeDigest,
       };
 

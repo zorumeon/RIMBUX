@@ -62,6 +62,7 @@ async function runAdversarialSecuritySuite() {
           recipientId: intent.recipientId,
           amountYocto: intent.amountYocto,
           intentNonce: intent.intentId,
+          sequenceNonce: "1",
           purposeDigest: "test-only-purpose-digest",
         },
         gasTgas: 30,
@@ -341,7 +342,13 @@ async function runAdversarialSecuritySuite() {
     );
 
     const mockProvider = {
-      async query() {
+      async query(params: any) {
+        if (params.request_type === "call_function") {
+          return {
+            result: Array.from(Buffer.from(JSON.stringify("1"), "utf8")),
+          };
+        }
+
         return {
           nonce: 7,
           permission: {

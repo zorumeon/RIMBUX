@@ -89,6 +89,7 @@ export function createDelayedSigningBoundary(delayMs = 50): {
             recipientId: intent.recipientId,
             amountYocto: intent.amountYocto,
             intentNonce: intent.intentId,
+          sequenceNonce: "1",
             purposeDigest: "test-only-purpose-digest",
           },
           gasTgas: 30,

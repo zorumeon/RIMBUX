@@ -9,7 +9,7 @@ test("RIMBUX Vault deploys and initializes on NEAR Sandbox", async () => {
     const root = worker.rootAccount;
     const agentKey = KeyPair.fromRandom("ed25519");
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
+      "contracts/rimbux-vault/build/rimbux-vault-v4.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {
@@ -56,7 +56,7 @@ test("RIMBUX Vault enforces owner-only emergency pause", async () => {
     const attacker = await root.devCreateAccount();
 
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
+      "contracts/rimbux-vault/build/rimbux-vault-v4.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {
@@ -107,7 +107,7 @@ test("RIMBUX Vault restricts agent key and recipient policy updates to owner", a
     const replacementKey = KeyPair.fromRandom("ed25519");
 
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
+      "contracts/rimbux-vault/build/rimbux-vault-v4.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {
@@ -184,7 +184,7 @@ test("RIMBUX Vault executes payment only through authorized agent FunctionCall k
     const agentKey = KeyPair.fromRandom("ed25519");
 
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
+      "contracts/rimbux-vault/build/rimbux-vault-v4.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {
@@ -296,7 +296,7 @@ test("RIMBUX Vault enforces per-transaction and daily spending limits", async ()
     const agentKey = KeyPair.fromRandom("ed25519");
 
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
+      "contracts/rimbux-vault/build/rimbux-vault-v4.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {
@@ -404,7 +404,7 @@ test("RIMBUX Vault enforces recipient allowlist and blocklist", async () => {
     const agentKey = KeyPair.fromRandom("ed25519");
 
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
+      "contracts/rimbux-vault/build/rimbux-vault-v4.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {
@@ -502,7 +502,7 @@ test("RIMBUX Vault blocks agent payments during emergency pause", async () => {
     const agentKey = KeyPair.fromRandom("ed25519");
 
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
+      "contracts/rimbux-vault/build/rimbux-vault-v4.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {
@@ -588,7 +588,7 @@ test("RIMBUX Vault rejects payment that would consume its storage reserve", asyn
     const agentKey = KeyPair.fromRandom("ed25519");
 
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux-vault-v2.wasm"
+      "contracts/rimbux-vault/build/rimbux-vault-v4.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {

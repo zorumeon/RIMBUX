@@ -18,7 +18,7 @@ test("RIMBUX Vault releases the daily reservation and marks the payment FAILED w
     const ghostRecipient = `ghost-recipient-${Date.now()}.${root.accountId}`;
 
     const wasmPath = path.resolve(
-      "contracts/rimbux-vault/build/rimbux-vault-v4.wasm"
+      "contracts/rimbux-vault/artifacts/rimbux-vault-v4.wasm"
     );
 
     const vault = await root.devDeploy(wasmPath, {

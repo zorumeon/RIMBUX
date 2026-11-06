@@ -31,3 +31,10 @@ contracts/rimbux-vault/build/*.js
 contracts/rimbux-vault/build/*.js.map
 
 public/*.pre-auth-ui
+
+# Local backups and review artifacts
+*.bak
+*.pre-migration-backup
+*.before-gas
+RIMBUX-CLAUDE-REVIEW.zip
+AI_REVIEW_BRIEF.md

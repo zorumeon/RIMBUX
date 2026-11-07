@@ -54,19 +54,20 @@ Think of RIMBUX as a security guard at the door. The agent can ask for a payment
 Agent asks: "Send 3.5 NEAR to alice.testnet"
         |
         v
-1. Understand the request   (spots hidden instructions and tricks)
+1. Parse the request        (spots hidden instructions and tricks)
         |
         v
-2. Check the recipient      (scam list, lookalike names, on-chain history)
-        |
-        v
-3. Check your rules         (spending limits, daily totals)
+2. Policy and attack check  (scam list, lookalike names, spending limits, daily totals)
         |
         +---- Dangerous ---------> BLOCK
-        +---- Unsure or large ---> ASK A HUMAN (approve / reject)
         |
         v
-4. Execute only when live signing is explicitly configured; otherwise simulate the decision in public read-only mode
+3. Human approval           (big or unfamiliar payments wait for approve / reject)
+        |
+        +---- Rejected ----------> BLOCK
+        |
+        v
+4. Dry-run signing          (live signing only when explicitly configured; otherwise the decision is simulated in public read-only mode)
         |
         v
 NEAR Testnet (live mode only)

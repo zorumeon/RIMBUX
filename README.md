@@ -10,14 +10,14 @@ Submission for the **NEAR Hackathon 2026, AI Security & Defense track**. Built s
 
 ### Dashboard overview
 
-The Overview screen introduces RIMBUX's wallet security controls:
+The home screen lets you try to drain a wallet and watch RIMBUX stop it:
 
-- **AI Agent:** Shows the agent monitoring concept and its relationship with the wallet.
-- **Policy:** Highlights access control, spending limits, and risk detection.
-- **Spending:** Represents daily limits and approval controls.
-- **Audit:** Highlights tamper-evident decision records.
-- **Scam Defense:** Describes protection against scams and prompt injection.
-- **Public Read-only:** The public demo can be explored without granting access to live signing or transaction broadcasting.
+- **Pick your attack:** Choose a ready-made case (hidden prompt injection, fake address, oversized send, unknown wallet, big send, or a legit send) or type your own transaction.
+- **What the agent got told:** Shows the untrusted input the agent received, which is how agents get hijacked.
+- **Four policy gates:** Parse the request, policy and attack check, human approval, and dry-run signing. If one gate stops the payment, the rest are halted.
+- **Guardian verdict:** The final decision is made by fixed rules, not by the AI.
+- **Live risk gauges:** Attack risk, daily limit used, and recipient trust, recalculated on every check.
+- **Public read-only:** The public demo can be explored without granting access to live signing or transaction broadcasting.
 
 <!-- TODO: add demo video link -->
 <!-- **Demo video:** https://... -->

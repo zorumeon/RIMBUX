@@ -169,10 +169,6 @@ export class SandboxedSigningBoundary {
     authToken: PolicyAuthorizationToken | undefined,
     policyEngine: DeterministicPolicyEngine
   ): Promise<SignedTransactionEnvelope> {
-    if (!this.keyPair) {
-      throw new Error("SIGNING_KEY_MISSING: Signing is unavailable in read-only mode.");
-    }
-
     if (this.revoked) {
       throw new Error("SANDBOX_KEY_REVOKED: The FunctionCall access key has been revoked locally.");
     }
@@ -206,6 +202,12 @@ export class SandboxedSigningBoundary {
     }
 
     try {
+      // Dicek setelah token direservasi, supaya validasi token selalu jalan
+      // lebih dulu. Error di sini ditangkap catch di bawah, yang melepas token.
+      if (!this.keyPair) {
+        throw new Error("SIGNING_KEY_MISSING: Signing is unavailable in read-only mode.");
+      }
+
       const publicKey = this.keyPair!.getPublicKey().toString();
 
       const accessKey = await this.provider.query({

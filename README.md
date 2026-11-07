@@ -253,10 +253,6 @@ Live operator controls and signing operations require the appropriate authentica
 - More recipient checks: account age, recent contract changes, past payments between agent and recipient.
 - On-chain key rotation.
 
-## License
-
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
-
 ## Testnet Transaction Evidence
 
 RIMBUX has been tested with real transactions on NEAR Testnet.
@@ -272,3 +268,7 @@ RIMBUX has been tested with real transactions on NEAR Testnet.
 - Owner: `rimbux.testnet`
 
 These links provide on-chain evidence of testnet activity. Public demo actions remain read-only or simulated and do not broadcast transactions.
+
+## License
+
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.

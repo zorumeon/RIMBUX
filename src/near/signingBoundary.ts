@@ -202,8 +202,8 @@ export class SandboxedSigningBoundary {
     }
 
     try {
-      // Dicek setelah token direservasi, supaya validasi token selalu jalan
-      // lebih dulu. Error di sini ditangkap catch di bawah, yang melepas token.
+      // Checked after the token is reserved so token validation always runs first.
+      // Errors thrown here are caught below, which releases the reserved token.
       if (!this.keyPair) {
         throw new Error("SIGNING_KEY_MISSING: Signing is unavailable in read-only mode.");
       }

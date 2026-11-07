@@ -40,7 +40,7 @@ Every decision is saved in a log that shows if anyone tries to change it later.
 
 ## What you will see
 
-Open the dashboard and press **Auto-Simulate 5 Scenarios**, or run the full **12 attack tests**. You will watch RIMBUX allow the good payments, pause the risky ones, and stop the attacks, with the reason for each decision.
+Open the dashboard, pick an attack (or type your own transaction), and press **Check payment**. You will watch the four policy gates decide: RIMBUX allows the good payments, pauses the risky ones for a human, and stops the attacks, with the reason for each decision. You can also run the full **12 attack tests**.
 
 ![A payment being checked](docs/screenshots/02-payment-flow.png)
 

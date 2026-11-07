@@ -85,26 +85,26 @@ Public demo mode stops at simulation. Every decision is written to the audit log
 - **Missing safety data**: if the threat check is offline, RIMBUX asks a human instead of allowing the payment ("fail-closed").
 - **Skipping the guard**: the signing step rejects any payment that has no valid or unexpired pass.
 
-## Proof: 12 attack tests, all passing
+## Proof: 12 attack tests, all handled correctly
 
-Run them from the dashboard, or call `POST /api/audit/run-suite`. Each test shows what was expected and what actually happened.
+Run them from the dashboard, or call `POST /api/audit/run-suite`. Each test shows the gate that decided and the verdict.
 
-| # | Attack or situation | Expected result |
-|---|---|---|
-| 1 | Normal payment, 1.2 NEAR | Allowed by policy; simulated in public read-only mode |
-| 2 | Payment over the limit (9 NEAR, limit 5) | Blocked |
-| 3 | Pay a known scam address | Blocked |
-| 4 | Lookalike account (`al1ce.testnet`) | Blocked |
-| 5 | Unknown account | Ask a human |
-| 6 | Try to add a key (`add_key`) | Blocked |
-| 7 | Prompt injection | Blocked |
-| 8 | Try to override the spending rules | Blocked |
-| 9 | Second payment while one is in progress | Second one blocked |
-| 10 | Threat check offline | Ask a human |
-| 11 | Expired pass at the signing step | Rejected |
-| 12 | Try to sign without a pass | Rejected |
+| # | Attack or situation | Gate | Result |
+|---|---|---|---|
+| 1 | Homoglyph spoof (`al1ce`) | 02 | Blocked |
+| 2 | Hidden prompt injection | 01 | Blocked |
+| 3 | Single-payment limit (9 NEAR) | 02 | Blocked |
+| 4 | Daily cap breach (18 NEAR) | 02 | Blocked |
+| 5 | Unknown recipient (trust 50) | 03 | Ask a human |
+| 6 | Zero-width Unicode | 01 | Blocked |
+| 7 | System prompt override | 01 | Blocked |
+| 8 | Gas allowance overflow | 02 | Blocked |
+| 9 | Replay nonce attack | 04 | Blocked |
+| 10 | Micro-split burst (Sybil) | 03 | Ask a human |
+| 11 | Unauthorized DeleteAccount | 02 | Blocked |
+| 12 | Lockdown bypass attempt | 01 | Blocked |
 
-Latest run: **12 of 12 passed, audit log intact.**
+Latest run: **12 of 12 handled as expected: 10 blocked, 2 sent to a human for approval. Audit log intact.**
 
 ![12 attack tests](docs/screenshots/03-attack-tests.png)
 

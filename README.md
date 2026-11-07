@@ -44,7 +44,7 @@ Open the dashboard, pick an attack (or type your own transaction), and press **C
 
 Below the attack arena, the control panel shows the spending rules you set (per payment, daily, per recipient, and the approval threshold), the human approval queue where a risky payment waits for you to approve or reject, and the limited key the agent uses instead of your main key.
 
-![Spending rules and approval queue](docs/screenshots/02-payment-flow.png)
+![Spending rules and approval queue](docs/screenshots/02-controls.png)
 
 ## How it works
 

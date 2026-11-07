@@ -338,8 +338,8 @@ app.post("/api/audit/run-suite", async (req, res) => {
     attempt.count += 1;
   }
   const testAgent = new RimbuxAutonomousAgent({ broadcastEnabled: false });
-  // Tanpa kunci penandatanganan, status akhir transaksi yang sah adalah SIMULATED.
-  // Di mode bersenjata tes tetap menuntut SIGNED.
+  // Without a signing key, the final status of a legitimate transaction is SIMULATED.
+  // When a key is configured, the tests still require SIGNED.
   const readOnly = !testAgent.signingBoundary.getPublicMetadata().publicKey;
   const expectedTxStatus = readOnly ? "SIMULATED" : "SIGNED";
   const results: Array<{ id: number; scenario: string; expected: string; actual: string; passed: boolean; detail: string }> = [];

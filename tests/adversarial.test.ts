@@ -245,6 +245,64 @@ async function runAdversarialSecuritySuite() {
   });
 
 
+  await runScenario("16a. Read-Only Boundary Validates Token First And Leaks No Reservation", async () => {
+    const { SandboxedSigningBoundary } = await import("../src/near/signingBoundary");
+
+    let providerCalls = 0;
+    const mockProvider = {
+      async query() { providerCalls += 1; throw new Error("TEST_FAILURE: provider must not be called."); },
+      async gasPrice() { providerCalls += 1; throw new Error("TEST_FAILURE: provider must not be called."); },
+      async block() { providerCalls += 1; throw new Error("TEST_FAILURE: provider must not be called."); },
+    };
+
+    // No private key means read-only mode.
+    const boundary = new SandboxedSigningBoundary(
+      "mock-agent.testnet",
+      "mock-vault.testnet",
+      undefined,
+      mockProvider as any,
+      false
+    );
+
+    const intent = agent.parseNaturalLanguageInstruction("Send 0.5 NEAR to alice.testnet");
+    intent.contractMethod = "execute_agent_payment";
+
+    // A missing token and an expired token must be rejected by token validation.
+    await assert.rejects(
+      boundary.signAuthorizedVaultIntent(intent, undefined, agent.policyEngine),
+      /MISSING_AUTH_TOKEN/
+    );
+
+    const expiredToken = agent.policyEngine.issueAuthorizationToken(
+      intent,
+      "DETERMINISTIC_POLICY_GATE",
+      -1000
+    );
+    await assert.rejects(
+      boundary.signAuthorizedVaultIntent(intent, expiredToken, agent.policyEngine),
+      /EXPIRED_AUTH_TOKEN/
+    );
+
+    // A valid token is rejected because there is no key, and its reservation must be released.
+    const validToken = agent.policyEngine.issueAuthorizationToken(
+      intent,
+      "DETERMINISTIC_POLICY_GATE"
+    );
+
+    await assert.rejects(
+      boundary.signAuthorizedVaultIntent(intent, validToken, agent.policyEngine),
+      /SIGNING_KEY_MISSING/
+    );
+
+    // If the reservation leaked, the second call would fail with TOKEN_ALREADY_RESERVED instead.
+    await assert.rejects(
+      boundary.signAuthorizedVaultIntent(intent, validToken, agent.policyEngine),
+      /SIGNING_KEY_MISSING/
+    );
+
+    assert.strictEqual(providerCalls, 0, "Read-only boundary must not touch the provider.");
+  });
+
   await runScenario("16. Signing Boundary Rejects Insufficient On-Chain Allowance", async () => {
     const { SandboxedSigningBoundary } = await import("../src/near/signingBoundary");
     const { KeyPair } = await import("near-api-js");

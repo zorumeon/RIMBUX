@@ -90,7 +90,9 @@ Public demo mode stops at simulation. Every decision is written to the audit log
 
 ## Proof: 12 attack tests, all handled correctly
 
-Run them from the dashboard, or call `POST /api/audit/run-suite`. Each test shows the gate that decided and the verdict.
+Run them from the dashboard. Each test shows the gate that decided and the verdict.
+
+The backend also has its own regression suite, `POST /api/audit/run-suite`. It covers different scenarios (for example expired or missing authorization tokens), and in demo mode it passes 12 of 12. Because the demo has no signing key, scenarios 1 and 9 expect `SIMULATED` instead of `SIGNED`, so signing itself is exercised only with a key configured or in the unit tests.
 
 | # | Attack or situation | Gate | Result |
 |---|---|---|---|
@@ -229,7 +231,7 @@ Open `http://localhost:3000`.
 | POST | `/api/sandbox/revoke` | Revoke local signing |
 | POST | `/api/sandbox/rotate` | Key rotation status |
 | GET | `/api/reputation/:accountId` | Check how trustworthy an account looks |
-| POST | `/api/audit/run-suite` | Run the attack tests |
+| POST | `/api/audit/run-suite` | Run the backend security suite |
 
 ### Public demo and operator access
 

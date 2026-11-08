@@ -63,6 +63,7 @@ export class ScamDetectionEngine {
 
     const transferAmounts = intent.rawInstruction.match(/\b\d+(?:\.\d+)?\s*NEAR\b/gi) ?? [];
     const recipientMentions = intent.rawInstruction.match(
+      // NOTE: "ke" is Indonesian for "to"; keeps recipient parsing working for Indonesian instructions.
       /\b(?:to|ke|into|recipient|account)\s+[a-z0-9_-]+(?:\.[a-z0-9_-]+)+/gi
     ) ?? [];
 
@@ -92,6 +93,7 @@ export class ScamDetectionEngine {
       { pattern: /<\s*(system|admin|policy_override)\s*>/i, label: "Injected Control Tag Spoofing" },
       { pattern: /do\s+not\s+(check|verify|inspect)\s+(the\s+)?(reputation|policy|spending\s+limits|daily\s+limits|limits)/i, label: "Security Gate Suppression Request" },
       { pattern: /abaikan\s+(semua\s+)?(instruksi|aturan|kebijakan)\s+(sebelumnya|terdahulu)/i, label: "Indonesian Instruction Override" },
+      // NOTE: Indonesian "jangan periksa/cek/verifikasi ..." = "do not check/verify ..."; detects injections that tell the agent to skip security checks.
       { pattern: /jangan\s+(periksa|cek|verifikasi)\s+(batas|limit|kebijakan|keamanan|aturan)/i, label: "Indonesian Security Gate Suppression" },
     ];
 

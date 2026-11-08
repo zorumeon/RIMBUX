@@ -54,6 +54,29 @@ const KNOWN_INTELLIGENCE_DB: Record<string, KnownEntityRecord> = {
   },
 };
 
+function editDistance(a: string, b: string): number {
+  const dp: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+  }
+  return dp[a.length][b.length];
+}
+
+// An unlisted account that differs by 1-2 characters from a trusted account is a typosquatting candidate.
+function findTrustedLookalike(accountId: string): { target: string; distance: number } | null {
+  let best: { target: string; distance: number } | null = null;
+  for (const [target, record] of Object.entries(KNOWN_INTELLIGENCE_DB)) {
+    if (record.category !== "VERIFIED_PROTOCOL" && record.category !== "KNOWN_PARTNER") continue;
+    if (target === accountId) continue;
+    const distance = editDistance(accountId, target);
+    if (distance > 0 && distance <= 2 && (!best || distance < best.distance)) best = { target, distance };
+  }
+  return best;
+}
+
 export class ReputationIntelligenceEngine {
   private nearClient: NearTestnetClient;
   private simulateOfflineIntel: boolean = false;
@@ -69,7 +92,7 @@ export class ReputationIntelligenceEngine {
   public async assessAccount(accountId: string): Promise<ReputationAssessment> {
     const normalizedId = accountId.trim().toLowerCase();
     const evidence: ReputationEvidenceItem[] = [];
-    let score = 50; // Netral: Unknown != Malicious
+    let score = 50; // Neutral: Unknown != Malicious
     let confidence = 0.5;
 
     const validNearAccountRegex = /^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
@@ -145,6 +168,18 @@ export class ReputationIntelligenceEngine {
       });
     }
 
+    const lookalike = intel ? null : findTrustedLookalike(normalizedId);
+    if (lookalike) {
+      score -= 45;
+      confidence = 0.9;
+      evidence.push({
+        source: "THREAT_INTEL_REGISTRY",
+        indicator: "LOOKALIKE_OF_TRUSTED_ACCOUNT",
+        detail: `'${normalizedId}' differs from trusted account '${lookalike.target}' by ${lookalike.distance} character(s), a typosquatting pattern.`,
+        weight: -45,
+      });
+    }
+
     const onChainState = await this.nearClient.inspectAccount(normalizedId);
     let accountExistsOnChain: boolean | null = null;
     let hasDeployedContract: boolean | null = null;
@@ -196,7 +231,7 @@ export class ReputationIntelligenceEngine {
     score = Math.max(0, Math.min(100, score));
 
     let classification: ReputationAssessment["classification"] = "NEUTRAL_UNKNOWN";
-    if (intel?.category === "SANCTIONED_DRAINER" || intel?.category === "REPORTED_SCAM" || score <= 20) {
+    if (intel?.category === "SANCTIONED_DRAINER" || intel?.category === "REPORTED_SCAM" || lookalike !== null || score <= 20) {
       classification = "MALICIOUS";
     } else if (score < 40) {
       classification = "SUSPICIOUS";

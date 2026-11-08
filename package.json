@@ -2,9 +2,13 @@
   "name": "rimbux-backend",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "ts-node src/server.ts",
     "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
     "test": "node --test -r ts-node/register tests/*.test.ts"
   },
   "dependencies": {

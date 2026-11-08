@@ -986,8 +986,15 @@
       dailyRecipientLimit: 8,
       approvalThreshold: 2,
       attackTestsCount: 12,
-      currentScenarioKey: 'valid-1.2',
-      pendingQueue: [],
+      currentScenarioKey: 'prompt-attack',
+      pendingQueue: [
+        {
+          id: 'tx-101',
+          amount: 3.5,
+          recipient: 'alice.testnet',
+          timeAgo: '2 min ago'
+        }
+      ],
       auditLogs: [
         {
           time: '12:04:11',
@@ -1274,7 +1281,7 @@
       renderAttackVectorsGrid();
       renderApprovalQueue();
       renderAuditTable();
-      selectScenario('valid-1.2', false);
+      selectScenario('prompt-attack', false);
     });
 
     function focusFlowSection(sectionKey, stepBtnId) {
@@ -1547,64 +1554,7 @@
       return { ...SCENARIOS['valid-1.2'], prompt: rawInput, recipient, amount, spendVsLimit: spendPct };
     }
 
-    function humanizeReason(reason) {
-      // Display-only: turn backend reason codes into readable English.
-      const labels = {
-        APPROVAL_THRESHOLD: 'Approval needed',
-        UNKNOWN_COUNTERPARTY_GATE: 'Unknown recipient'
-      };
-      const text = String(reason).replace(/\bke\b/g, 'to');
-      return text.replace(/^([A-Z][A-Z0-9_]+):\s*/, (match, code) => {
-        const label = labels[code] || code.toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
-        return label + ': ';
-      });
-    }
-
-    function mapBackendPaymentResult(rawInput, result) {
-      const evaluation = result && result.evaluation ? result.evaluation : {};
-      const record = result && result.transactionRecord ? result.transactionRecord : {};
-      const decision = evaluation.decision || record.policyDecision || 'BLOCK';
-      const statusType = decision === 'ALLOW' ? 'allowed' : (decision === 'REQUIRE_APPROVAL' ? 'warning' : 'blocked');
-      const intent = result && result.intent ? result.intent : {};
-      const amount = Number(intent.amountNear ?? record.amountNear ?? 0);
-      const recipient = intent.recipientId || record.recipientId || 'unknown';
-      const reasons = Array.isArray(evaluation.reasons) ? evaluation.reasons : (Array.isArray(record.reasons) ? record.reasons : []);
-      const reasonText = reasons.length ? reasons.map(humanizeReason).join(' · ') : (result.agentExplanation || 'Security evaluation completed.');
-      const reputation = evaluation.reputation || {};
-      const scam = evaluation.scamReport || {};
-      const spending = evaluation.spendingCheck || {};
-      const trustScore = Number(reputation.score ?? record.reputationScore ?? 0);
-      const noScamWarnings = Array.isArray(scam.warnings) && scam.warnings.length === 0;
-      const scamRisk = Number(scam.riskScore ?? (statusType === 'blocked' ? 90 : statusType === 'warning' ? (noScamWarnings ? 20 : 45) : 5));
-      const limitSnapshot = spending.snapshot || {};
-      const dailyLimit = Number(limitSnapshot.dailyLimitNear ?? appState.maxDailyLimit);
-      const spent = Number(limitSnapshot.spentTodayNear ?? appState.spendingToday);
-      const gateState = statusType === 'allowed' ? 'pass' : statusType === 'warning' ? 'warn' : 'fail';
-      const gates = [
-        { status: gateState, badge: statusType === 'blocked' ? 'BLOCKED' : statusType === 'warning' ? 'REVIEW' : 'PASS', desc: statusType === 'allowed' ? 'Request is valid and accepted' : statusType === 'warning' ? 'Request is valid but needs a human decision' : 'Request rejected by the security rules' },
-        { status: statusType === 'blocked' ? 'skip' : 'pass', badge: statusType === 'blocked' ? 'STOPPED' : 'CHECKED', desc: statusType === 'blocked' ? 'Not reached' : 'Spending limits checked' },
-        { status: statusType === 'blocked' ? 'skip' : statusType === 'warning' ? 'warn' : 'pass', badge: statusType === 'warning' ? 'REVIEW' : statusType === 'blocked' ? 'STOPPED' : 'CHECKED', desc: statusType === 'warning' ? 'Sent to a human to approve or reject' : statusType === 'blocked' ? 'Not reached' : 'Recipient and risk look safe' },
-        { status: statusType === 'warning' ? 'warn' : statusType === 'blocked' ? 'skip' : 'pass', badge: statusType === 'warning' ? 'HOLD' : statusType === 'blocked' ? 'STOPPED' : 'SIMULATED', desc: statusType === 'warning' ? 'On hold until approved. Nothing is signed or sent' : statusType === 'blocked' ? 'Signing aborted. Nothing was sent' : 'Dry run only. No funds were sent' }
-      ];
-      return {
-        prompt: rawInput, intentId: evaluation.intentId || intent.intentId || record.intentId,
-        amount, recipient, statusType,
-        verdictText: statusType === 'allowed' ? 'SIMULATION PASSED' : statusType === 'warning' ? 'NEEDS APPROVAL' : 'BLOCKED',
-        verdictReason: reasonText,
-        downstreamText: statusType === 'allowed' ? 'Backend security evaluation passed (read-only simulation)' : statusType === 'warning' ? 'Held by backend for operator approval' : 'Blocked by backend security policy',
-        downstreamTarget: statusType === 'warning' ? 'card-approval-queue' : 'section-audit-log',
-        scamRisk, scamDesc: scam.summary || (reasons[0] || 'Backend risk assessment'),
-        spendVsLimit: dailyLimit > 0 ? Math.min(Math.round((amount / dailyLimit) * 100), 100) : 0,
-        spendText: `${spent} / ${dailyLimit} NEAR today`,
-        trustScore, trustDesc: reputation.summary || reputation.classification || 'Backend recipient assessment',
-        latency: 'LIVE API', stoppedAtGate: statusType === 'blocked' ? 1 : statusType === 'warning' ? 3 : 4,
-        threatTag: { text: statusType === 'allowed' ? 'DECISION: PASSED' : statusType === 'warning' ? 'DECISION: NEEDS APPROVAL' : 'DECISION: BLOCKED', style: statusType === 'allowed' ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : statusType === 'warning' ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-rose-500/20 text-rose-300 border-rose-500/40' },
-        diffHtml: `<div class="text-slate-200">${escapeHtml(reasonText)}</div>`, gates,
-        backendResult: result, transactionStatus: record.status || 'EVALUATED'
-      };
-    }
-
-    async function executePaymentCheck() {
+    function executePaymentCheck() {
       if (appState.isLockdown) {
         showToast('LOCKDOWN ACTIVE: All agent checks are halted.', 'error');
         return;
@@ -1612,30 +1562,15 @@
 
       const rawInput = document.getElementById('payment-input').value.trim() || 'Send 1.2 NEAR to alice.test';
       document.getElementById('agent-command-preview').textContent = rawInput;
+
+      const evaluated = evaluatePromptIntent(rawInput);
       const checkBtn = document.getElementById('btn-check-payment');
+
       checkBtn.disabled = true;
       checkBtn.innerHTML = `<svg class="ic animate-spin text-xs" aria-hidden="true"><use href="#i-circle-notch"/></svg><span>Checking...</span>`;
-      highlightFlowBarStage('flow-step-a');
 
-      try {
-        const response = await fetch('/api/demo/instruct', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ instruction: rawInput })
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const message = payload.message || payload.error || `HTTP_${response.status}`;
-          throw new Error(message);
-        }
-        const evaluated = mapBackendPaymentResult(rawInput, payload);
-        runSequentialGateTrace(evaluated, true);
-      } catch (error) {
-        checkBtn.disabled = false;
-        checkBtn.innerHTML = `<span>Check payment</span><svg class="ic text-xs" aria-hidden="true"><use href="#i-arrow-right"/></svg>`;
-        showToast(`Backend check failed: ${error.message || 'API unavailable'}`, 'error');
-      }
+      highlightFlowBarStage('flow-step-a');
+      runSequentialGateTrace(evaluated, true);
     }
 
     function finalizePaymentExecution(evaluated) {
@@ -1652,9 +1587,15 @@
 
       if (evaluated.statusType === 'allowed') {
         spotlightElement('section-audit-log', 'emerald');
-        showToast(`Backend passed: "${rawInput}". ${evaluated.transactionStatus || 'SIMULATED'} — no funds were sent.`, 'success');
+        showToast(`Approved: "${rawInput}" passed all 4 gates & logged.`, 'success');
       } else if (evaluated.statusType === 'warning') {
-        syncApprovalQueue();
+        appState.pendingQueue.unshift({
+          id: 'tx-' + Math.floor(Math.random() * 900 + 100),
+          amount: evaluated.amount,
+          recipient: evaluated.recipient,
+          timeAgo: 'NEW PENDING'
+        });
+        renderApprovalQueue(true);
         spotlightElement('card-approval-queue', 'amber');
         showToast(`Escalated: "${rawInput}" sent to the approval queue.`, 'warning');
       } else {
@@ -1764,34 +1705,6 @@
       }
     }
 
-
-    async function syncApprovalQueue() {
-      try {
-        const response = await fetch('/api/status', {
-          method: 'GET',
-          credentials: 'same-origin',
-          cache: 'no-store'
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || `HTTP_${response.status}`);
-
-        const items = Array.isArray(data.pendingApprovals) ? data.pendingApprovals : [];
-        appState.pendingQueue = items
-          .filter(item => item && item.simulationOnly === true && item.intent && item.intent.intentId)
-          .map(item => ({
-            id: item.intent.intentId,
-            amount: Number(item.intent.amountNear || 0),
-            recipient: item.intent.recipientId || 'Unknown recipient',
-            timeAgo: 'DEMO · SIMULATED'
-          }));
-
-        renderApprovalQueue(false);
-      } catch (error) {
-        console.error('Approval queue synchronization failed:', error);
-        showToast('Could not refresh the approval queue.', 'error');
-      }
-    }
-
     function renderApprovalQueue(highlightNewest = false) {
       const container = document.getElementById('approval-queue-content');
       const countBadge = document.getElementById('queue-count-badge');
@@ -1836,39 +1749,38 @@
       `).join('');
     }
 
-    async function resolveQueueItem(id, isApproved) {
-      const item = appState.pendingQueue.find(entry => entry.id === id);
-      if (!item) return;
+    function resolveQueueItem(id, isApproved) {
+      const idx = appState.pendingQueue.findIndex(item => item.id === id);
+      if (idx === -1) return;
+      const item = appState.pendingQueue[idx];
+      appState.pendingQueue.splice(idx, 1);
 
-      try {
-        const response = await fetch(`/api/demo/approvals/${encodeURIComponent(id)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ approve: Boolean(isApproved) })
-        });
-
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload.message || payload.error || `HTTP_${response.status}`);
-        }
-
-        await syncApprovalQueue();
-
-        const action = isApproved ? 'Approved' : 'Rejected';
-        showToast(
-          `${action} demo request: ${item.amount} NEAR to ${item.recipient}. No funds were sent.`,
-          isApproved ? 'success' : 'error'
-        );
-      } catch (error) {
-        showToast(`Approval failed: ${error.message || 'API unavailable'}`, 'error');
-        await syncApprovalQueue();
+      if (isApproved) {
+        appState.spendingToday = +(appState.spendingToday + item.amount).toFixed(2);
+        document.getElementById('metric-spending-val').textContent = `${appState.spendingToday} / ${appState.maxDailyLimit}`;
+        prependAuditEntry(`Operator Approved: Send ${item.amount} NEAR to ${item.recipient}`, 'allowed');
+        spotlightElement('kpi-spending-card', 'emerald');
+        spotlightElement('section-audit-log', 'emerald');
+        showToast(`Approved ${item.amount} NEAR to ${item.recipient}. Logged in the audit trail.`, 'success');
+      } else {
+        prependAuditEntry(`Operator Rejected: Send ${item.amount} NEAR to ${item.recipient}`, 'blocked');
+        spotlightElement('section-audit-log', 'rose');
+        showToast(`Rejected ${item.amount} NEAR transfer. Logged in the audit trail.`, 'error');
       }
+      renderApprovalQueue(false);
     }
 
     function addPendingTransfer() {
-      document.getElementById('payment-input').value = 'Send 3.5 NEAR to alice.testnet';
-      executePaymentCheck();
+      appState.pendingQueue.push({
+        id: 'tx-' + Math.floor(Math.random() * 900 + 100),
+        amount: 3.5,
+        recipient: 'alice.testnet',
+        timeAgo: 'NEW PENDING'
+      });
+      renderApprovalQueue(true);
+      prependAuditEntry('Send 3.5 NEAR to alice.testnet', 'warning');
+      spotlightElement('card-approval-queue', 'amber');
+      showToast('Queued 3.5 NEAR transfer to alice.testnet', 'warning');
     }
 
     function applySpendingLimits() {
@@ -2194,10 +2106,5 @@
       }[tag] || tag));
     }
   </script>
-<script>
-  // Load the approval queue on page load, then keep it in sync with the backend.
-  syncApprovalQueue();
-  setInterval(syncApprovalQueue, 10000);
-</script>
 </body>
 </html>

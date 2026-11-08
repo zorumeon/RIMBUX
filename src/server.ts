@@ -386,6 +386,10 @@ app.post("/api/audit/run-suite", async (req, res) => {
     attempt.count += 1;
   }
   const testAgent = new RimbuxAutonomousAgent({ broadcastEnabled: false });
+  // Without a signing key, the final status of a legitimate transaction is SIMULATED.
+  // When a key is configured, the tests still require SIGNED.
+  const readOnly = !testAgent.signingBoundary.getPublicMetadata().publicKey;
+  const expectedTxStatus = readOnly ? "SIMULATED" : "SIGNED";
   const results: Array<{ id: number; scenario: string; expected: string; actual: string; passed: boolean; detail: string }> = [];
 
   // 1. Normal payment
@@ -393,9 +397,11 @@ app.post("/api/audit/run-suite", async (req, res) => {
   results.push({
     id: 1,
     scenario: "Authorized Payment (1.2 NEAR -> alice.testnet)",
-    expected: "ALLOW & SIGNED",
+    expected: readOnly
+      ? "ALLOW & SIMULATED (read-only: signing not exercised)"
+      : "ALLOW & SIGNED",
     actual: `${s1.evaluation.decision} & ${s1.transactionRecord.status}`,
-    passed: s1.evaluation.decision === "ALLOW" && s1.transactionRecord.status === "SIGNED",
+    passed: s1.evaluation.decision === "ALLOW" && s1.transactionRecord.status === expectedTxStatus,
     detail: s1.agentExplanation,
   });
 
@@ -484,9 +490,9 @@ app.post("/api/audit/run-suite", async (req, res) => {
   results.push({
     id: 9,
     scenario: "Concurrent Spending Protection & Human Approval",
-    expected: "Second transaction BLOCKED (CONCURRENT_SPEND_LOCKED) & first transaction SIGNED after approval",
+    expected: `Second transaction BLOCKED (CONCURRENT_SPEND_LOCKED) & first transaction ${expectedTxStatus} after approval${readOnly ? " (read-only: signing not exercised)" : ""}`,
     actual: `Tx2: ${s9b.evaluation.decision} | Tx1: ${s9Approved.transactionRecord.status}`,
-    passed: s9b.evaluation.decision === "BLOCK" && s9Approved.transactionRecord.status === "SIGNED",
+    passed: s9b.evaluation.decision === "BLOCK" && s9Approved.transactionRecord.status === expectedTxStatus,
     detail: s9b.evaluation.reasons.join("; "),
   });
 

@@ -10,14 +10,14 @@ Submission for the **NEAR Hackathon 2026, AI Security & Defense track**. Built s
 
 ### Dashboard overview
 
-The Overview screen introduces RIMBUX's wallet security controls:
+The home screen lets you try to drain a wallet and watch RIMBUX stop it:
 
-- **AI Agent:** Shows the agent monitoring concept and its relationship with the wallet.
-- **Policy:** Highlights access control, spending limits, and risk detection.
-- **Spending:** Represents daily limits and approval controls.
-- **Audit:** Highlights tamper-evident decision records.
-- **Scam Defense:** Describes protection against scams and prompt injection.
-- **Public Read-only:** The public demo can be explored without granting access to live signing or transaction broadcasting.
+- **Pick your attack:** Choose a ready-made case (hidden prompt injection, fake address, oversized send, unknown wallet, big send, or a legit send) or type your own transaction.
+- **What the agent got told:** Shows the untrusted input the agent received, which is how agents get hijacked.
+- **Four policy gates:** Parse the request, policy and attack check, human approval, and dry-run signing. If one gate stops the payment, the rest are halted.
+- **Guardian verdict:** The final decision is made by fixed rules, not by the AI.
+- **Live risk gauges:** Attack risk, daily limit used, and recipient trust, recalculated on every check.
+- **Public read-only:** The public demo can be explored without granting access to live signing or transaction broadcasting.
 
 <!-- TODO: add demo video link -->
 <!-- **Demo video:** https://... -->
@@ -40,9 +40,11 @@ Every decision is saved in a log that shows if anyone tries to change it later.
 
 ## What you will see
 
-Open the dashboard and press **Auto-Simulate 5 Scenarios**, or run the full **12 attack tests**. You will watch RIMBUX allow the good payments, pause the risky ones, and stop the attacks, with the reason for each decision.
+Open the dashboard, pick an attack (or type your own transaction), and press **Check payment**. You will watch the four policy gates decide: RIMBUX allows the good payments, pauses the risky ones for a human, and stops the attacks, with the reason for each decision. You can also run the full **12 attack tests**.
 
-![A payment being checked](docs/screenshots/02-payment-flow.png)
+Below the attack arena, the control panel shows the spending rules you set (per payment, daily, per recipient, and the approval threshold), the human approval queue where a risky payment waits for you to approve or reject, and the limited key the agent uses instead of your main key.
+
+![Spending rules and approval queue](docs/screenshots/02-controls.png)
 
 ## How it works
 
@@ -52,19 +54,20 @@ Think of RIMBUX as a security guard at the door. The agent can ask for a payment
 Agent asks: "Send 3.5 NEAR to alice.testnet"
         |
         v
-1. Understand the request   (spots hidden instructions and tricks)
+1. Parse the request        (spots hidden instructions and tricks)
         |
         v
-2. Check the recipient      (scam list, lookalike names, on-chain history)
-        |
-        v
-3. Check your rules         (spending limits, daily totals)
+2. Policy and attack check  (scam list, lookalike names, spending limits, daily totals)
         |
         +---- Dangerous ---------> BLOCK
-        +---- Unsure or large ---> ASK A HUMAN (approve / reject)
         |
         v
-4. Execute only when live signing is explicitly configured; otherwise simulate the decision in public read-only mode
+3. Human approval           (big or unfamiliar payments wait for approve / reject)
+        |
+        +---- Rejected ----------> BLOCK
+        |
+        v
+4. Dry-run signing          (live signing only when explicitly configured; otherwise the decision is simulated in public read-only mode)
         |
         v
 NEAR Testnet (live mode only)
@@ -85,26 +88,28 @@ Public demo mode stops at simulation. Every decision is written to the audit log
 - **Missing safety data**: if the threat check is offline, RIMBUX asks a human instead of allowing the payment ("fail-closed").
 - **Skipping the guard**: the signing step rejects any payment that has no valid or unexpired pass.
 
-## Proof: 12 attack tests, all passing
+## Proof: 12 attack tests, all handled correctly
 
-Run them from the dashboard, or call `POST /api/audit/run-suite`. Each test shows what was expected and what actually happened.
+Run them from the dashboard. Each test shows the gate that decided and the verdict.
 
-| # | Attack or situation | Expected result |
-|---|---|---|
-| 1 | Normal payment, 1.2 NEAR | Allowed by policy; simulated in public read-only mode |
-| 2 | Payment over the limit (9 NEAR, limit 5) | Blocked |
-| 3 | Pay a known scam address | Blocked |
-| 4 | Lookalike account (`al1ce.testnet`) | Blocked |
-| 5 | Unknown account | Ask a human |
-| 6 | Try to add a key (`add_key`) | Blocked |
-| 7 | Prompt injection | Blocked |
-| 8 | Try to override the spending rules | Blocked |
-| 9 | Second payment while one is in progress | Second one blocked |
-| 10 | Threat check offline | Ask a human |
-| 11 | Expired pass at the signing step | Rejected |
-| 12 | Try to sign without a pass | Rejected |
+The backend also has its own regression suite, `POST /api/audit/run-suite`. It covers different scenarios (for example expired or missing authorization tokens), and in demo mode it passes 12 of 12. Because the demo has no signing key, scenarios 1 and 9 expect `SIMULATED` instead of `SIGNED`, so signing itself is exercised only with a key configured or in the unit tests.
 
-Latest run: **12 of 12 passed, audit log intact.**
+| # | Attack or situation | Gate | Result |
+|---|---|---|---|
+| 1 | Homoglyph spoof (`al1ce`) | 02 | Blocked |
+| 2 | Hidden prompt injection | 01 | Blocked |
+| 3 | Single-payment limit (9 NEAR) | 02 | Blocked |
+| 4 | Daily cap breach (18 NEAR) | 02 | Blocked |
+| 5 | Unknown recipient (trust 50) | 03 | Ask a human |
+| 6 | Zero-width Unicode | 01 | Blocked |
+| 7 | System prompt override | 01 | Blocked |
+| 8 | Gas allowance overflow | 02 | Blocked |
+| 9 | Replay nonce attack | 04 | Blocked |
+| 10 | Micro-split burst (Sybil) | 03 | Ask a human |
+| 11 | Unauthorized DeleteAccount | 02 | Blocked |
+| 12 | Lockdown bypass attempt | 01 | Blocked |
+
+Latest run: **12 of 12 handled as expected: 10 blocked, 2 sent to a human for approval. Audit log intact.**
 
 ![12 attack tests](docs/screenshots/03-attack-tests.png)
 
@@ -226,7 +231,7 @@ Open `http://localhost:3000`.
 | POST | `/api/sandbox/revoke` | Revoke local signing |
 | POST | `/api/sandbox/rotate` | Key rotation status |
 | GET | `/api/reputation/:accountId` | Check how trustworthy an account looks |
-| POST | `/api/audit/run-suite` | Run the attack tests |
+| POST | `/api/audit/run-suite` | Run the backend security suite |
 
 ### Public demo and operator access
 
@@ -250,10 +255,6 @@ Live operator controls and signing operations require the appropriate authentica
 - More recipient checks: account age, recent contract changes, past payments between agent and recipient.
 - On-chain key rotation.
 
-## License
-
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
-
 ## Testnet Transaction Evidence
 
 RIMBUX has been tested with real transactions on NEAR Testnet.
@@ -269,3 +270,7 @@ RIMBUX has been tested with real transactions on NEAR Testnet.
 - Owner: `rimbux.testnet`
 
 These links provide on-chain evidence of testnet activity. Public demo actions remain read-only or simulated and do not broadcast transactions.
+
+## License
+
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.

@@ -276,6 +276,15 @@ The read-only GET endpoints are public on purpose so the demo can be checked wit
 
 **The one real payment.** By default RIMBUX only signs locally. The single exception is `POST /api/testnet/broadcast-one-shot/:intentId`: it needs an operator login and a configured signing key, and it sends exactly one payment of 0.001 NEAR to `rimbuxreceiver.testnet`. Any other recipient or amount is refused with `ONE_SHOT_TRANSACTION_SCOPE_MISMATCH`.
 
+**Checking the key and the vault directly.** `e2e-pay.cjs` is a separate script that does not go through RIMBUX's policy checks. It uses only the agent's FunctionCall key to call the vault, to show that the key and the contract work on NEAR Testnet. It needs `NEAR_VAULT_CONTRACT_ID`, `NEAR_AGENT_ACCOUNT_ID` and `NEAR_AGENT_FUNCTION_CALL_PRIVATE_KEY` in `.env`.
+
+~~~
+node e2e-pay.cjs [recipient] [amountNear]        # dry run: signs and prints, sends nothing
+node e2e-pay.cjs [recipient] [amountNear] --yes  # sends the payment for real
+~~~
+
+The defaults are `rimbux-agent.testnet` and 0.1 NEAR.
+
 ## Deploying
 
 RIMBUX is a Node server with a SQLite file, so it needs a host that keeps running and keeps its disk (a small VPS, Render, Railway or Fly.io with a volume). It is not a fit for serverless platforms.

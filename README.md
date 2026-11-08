@@ -314,4 +314,4 @@ RIMBUX is a Node server with a SQLite file, so it needs a host that keeps runnin
 
 ## License
 
-No open-source license has been specified yet.
+Released under the [MIT License](LICENSE).

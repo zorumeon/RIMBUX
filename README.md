@@ -263,10 +263,18 @@ Paste the output into `.env` as `RIMBUX_OPERATOR_PASSWORD_HASH`, restart, and lo
 | POST   | `/api/policy/update`                | operator                   | Change spending rules                           |
 | POST   | `/api/sandbox/revoke`               | operator                   | Revoke local signing                            |
 | POST   | `/api/sandbox/rotate`               | operator                   | Key rotation status (not implemented)           |
+| POST   | `/api/testnet/broadcast-one-shot/:intentId` | operator                   | Approve one waiting payment and send it to NEAR Testnet. Only 0.001 NEAR to `rimbuxreceiver.testnet` is allowed; anything else is rejected |
+| POST   | `/api/recovery/release/:reservationId`      | operator                   | Release a spending reservation held after a restart (only for blocked payments that are not waiting for approval) |
+| GET    | `/api/auth/session`                         | public                     | Tells the dashboard whether the operator is logged in |
+| GET    | `/api/public-testnet-check`                 | public                     | Reads the latest block and the agent and vault accounts from NEAR Testnet |
 | GET    | `/api/recovery`                     | operator                   | Read recovery data                              |
 | POST   | `/api/auth/login`, `/api/auth/logout` | public                   | Operator session                                |
 
 All POST requests must come from the same origin as the page. `curl` without an `Origin` header and without cookies is accepted.
+
+The read-only GET endpoints are public on purpose so the demo can be checked without a login. This includes `/api/status`, which shows the audit log, waiting approvals, the spending policy and recent payments.
+
+**The one real payment.** By default RIMBUX only signs locally. The single exception is `POST /api/testnet/broadcast-one-shot/:intentId`: it needs an operator login and a configured signing key, and it sends exactly one payment of 0.001 NEAR to `rimbuxreceiver.testnet`. Any other recipient or amount is refused with `ONE_SHOT_TRANSACTION_SCOPE_MISMATCH`.
 
 ## Deploying
 

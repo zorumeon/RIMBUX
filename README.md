@@ -17,6 +17,8 @@ The home screen lets you try to drain a wallet and watch RIMBUX stop it:
 - **Four policy gates:** Parse the request, policy and attack check, human approval, and dry-run signing. If one gate stops the payment, the rest are halted.
 - **Guardian verdict:** The final decision is made by fixed rules, not by the AI.
 - **Live risk gauges:** Attack risk, daily limit used, and recipient trust, recalculated on every check.
+- **Spending guard and 12 attack scenarios:** Below the arena, a spending counter and a one-click suite of 12 attack scenarios show how each gate responds.
+- **Tamper-evident audit log:** Every check and every human decision is added as a SHA-256 chained entry, with a server-side chain check shown next to it.
 - **Public read-only:** The public demo can be explored without granting access to live signing or transaction broadcasting.
 
 <!-- TODO: add demo video link -->
@@ -40,7 +42,7 @@ Every decision is saved in a log that shows if anyone tries to change it later.
 
 ## What you will see
 
-Open the dashboard, pick an attack (or type your own transaction), and press **Check payment**. You will watch the four policy gates decide: RIMBUX allows the good payments, pauses the risky ones for a human, and stops the attacks, with the reason for each decision. You can also run the full **12 attack tests**.
+Open the dashboard, pick an attack (or type your own transaction), and press **Check payment**. You will watch the four policy gates decide: RIMBUX allows the good payments, pauses the risky ones for a human, and stops the attacks, with the reason for each decision. You can also run the full **12 attack tests** with one click, and approve or reject a held payment in the human approval queue (simulated, no funds move).
 
 Below the attack arena, the control panel shows the spending rules you set (per payment, daily, per recipient, and the approval threshold), the human approval queue where a risky payment waits for you to approve or reject, and the limited key the agent uses instead of your main key.
 
@@ -143,6 +145,11 @@ The dashboard checks this key directly on NEAR Testnet (read-only) and shows it 
 
 Every decision is saved as a numbered entry. Each entry includes a fingerprint of the one before it, so if someone edits or deletes an old record, the **Verify Chain** button shows that the log was changed.
 
+There are two layers of proof:
+
+- **In the browser:** every row is hashed with SHA-256 and linked to the previous row. **Simulate tampering** followed by **Verify Chain** shows the chain breaking.
+- **On the server:** the backend keeps its own hash chain of every decision, including human approvals. The blue **Server chain** badge calls `GET /api/audit/verify` and shows whether that chain is intact and how many entries it holds.
+
 This makes the log *tamper-evident*: it cannot stop changes, but it makes them visible.
 
 ![Audit log](docs/screenshots/04-audit-log.png)
@@ -232,6 +239,8 @@ Open `http://localhost:3000`.
 | POST | `/api/sandbox/rotate` | Key rotation status |
 | GET | `/api/reputation/:accountId` | Check how trustworthy an account looks |
 | POST | `/api/audit/run-suite` | Run the backend security suite |
+| GET | `/api/audit/verify` | Verify the server-side audit hash chain |
+| POST | `/api/demo/approvals/:intentId` | Approve or reject a waiting payment in demo mode (simulated only) |
 
 ### Public demo and operator access
 
@@ -245,6 +254,8 @@ Live operator controls and signing operations require the appropriate authentica
 - **Revoking a key is local.** It does not remove the key from NEAR.
 - **Risk scores are signals, not guarantees.** They come from NEAR Testnet RPC data plus a local list, not a network-wide threat feed.
 - **The audit log shows tampering; it does not prevent it.**
+- **Demo approvals are simulated.** Approve or Reject in the dashboard releases the reservation and records the decision, but nothing is signed or broadcast, so the Spending guard does not increase.
+- **The audit table in the browser is a session view.** It starts with three example rows and resets when the page is refreshed. The server-side chain keeps growing and is verified by the Server chain badge.
 - **No TEE attestation yet.** This is the next step, to prove the guard's own code has not been changed.
 - **This is a hackathon prototype**, not an audited production wallet.
 

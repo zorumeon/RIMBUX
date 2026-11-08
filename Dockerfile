@@ -1,7 +1,7 @@
 FROM node:22-slim
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --include=dev
+RUN npm pkg delete devDependencies.near-workspaces && npm install --include=dev
 COPY . .
 RUN npm run build
 ENV NODE_ENV=production

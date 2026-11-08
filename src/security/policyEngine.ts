@@ -101,7 +101,7 @@ export class DeterministicPolicyEngine {
       decision = "REQUIRE_APPROVAL";
       if (riskClassification === "LOW") riskClassification = "MEDIUM";
       reasons.push(
-        `APPROVAL_THRESHOLD: Transfer ${intent.amountNear} NEAR ke '${intent.recipientId}' requires human operator authorization.`
+        `APPROVAL_THRESHOLD: Transfer ${intent.amountNear} NEAR to '${intent.recipientId}' requires human operator authorization.`
       );
     }
 

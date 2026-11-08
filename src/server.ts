@@ -29,6 +29,11 @@ app.use("/api", (req, res, next) => {
   return requireSameOrigin(req, res, next);
 });
 
+// Serve the backend-connected dashboard at the root URL (must come before express.static)
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(__dirname, "../public/rimbux_wallet_security_guardian_backend-connected.html"));
+});
+
 app.use(express.static(path.join(__dirname, "../public")));
 
 const auditPersistence = new RimbuxPersistence();
@@ -236,6 +241,54 @@ app.post("/api/recovery/release/:reservationId", requireOperator, async (req, re
   }
 });
 
+app.post("/api/demo/instruct", async (req, res) => {
+  try {
+    const { instruction } = req.body ?? {};
+    if (typeof instruction !== "string" || !instruction.trim()) {
+      return res.status(400).json({ error: "Parameter instruction (string) is required." });
+    }
+    if (instruction.length > 1000) {
+      return res.status(400).json({ error: "INSTRUCTION_TOO_LONG" });
+    }
+
+    const result = await rimbuxAgent.processInstruction(instruction, true);
+    return res.json({
+      ...result,
+      mode: "SIMULATED",
+      broadcasted: false,
+    });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/api/demo/approvals/:intentId", async (req, res) => {
+  try {
+    const { approve } = req.body ?? {};
+    if (typeof approve !== "boolean") {
+      return res.status(400).json({ error: "INVALID_APPROVAL: approve must be a boolean." });
+    }
+
+    const result = await rimbuxAgent.approveDemoPendingIntent(
+      String(req.params.intentId),
+      approve
+    );
+
+    return res.json({
+      ...result,
+      mode: "SIMULATED",
+      broadcasted: false,
+    });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+app.get("/api/audit/verify", (_req, res) => {
+  const result = rimbuxAgent.auditLogger.verifyChainIntegrity();
+  return res.json({ ...result, source: "server" });
+});
+
 app.post("/api/agent/instruct", (req, res, next) => {
   // Public access is allowed only when live signing is unavailable.
   if (!rimbuxAgent.signingBoundary.getPublicMetadata().publicKey) return next();
@@ -244,7 +297,7 @@ app.post("/api/agent/instruct", (req, res, next) => {
   try {
     const { instruction } = req.body;
     if (!instruction || typeof instruction !== "string") {
-      return res.status(400).json({ error: "Parameter instruction (string) wajib diisi." });
+      return res.status(400).json({ error: "Parameter instruction (string) is required." });
     }
     const result = await rimbuxAgent.processInstruction(instruction);
     return res.json(result);
@@ -514,6 +567,6 @@ app.post("/api/audit/run-suite", async (req, res) => {
 const PORT = Number(process.env.PORT) || 3000;
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`[RIMBUX] Cybersecurity Control Center aktif di http://localhost:${PORT}`);
+    console.log(`[RIMBUX] Cybersecurity Control Center is running at http://localhost:${PORT}`);
   });
 }

@@ -18,6 +18,7 @@ export interface PendingApprovalItem {
   intent: ExtractedTransactionIntent;
   evaluation: PolicyEvaluationResult;
   createdAt: number;
+  simulationOnly?: boolean;
 }
 
 export interface AgentExecutionResponse {
@@ -109,6 +110,7 @@ export class RimbuxAutonomousAgent {
     const amountNear = amountMatch ? Number(amountMatch[1]) : 0;
 
     const toAccountMatch =
+      // NOTE: "ke" is Indonesian for "to"; keeps recipient parsing working for Indonesian instructions.
       instruction.match(/(?:to|ke|into|recipient|account)\s+([a-z0-9_-]+(?:\.[a-z0-9_-]+)+)/i) ||
       instruction.match(/\b([a-z0-9_-]+\.(?:testnet|near))\b/i);
     const recipientId = toAccountMatch ? toAccountMatch[1].toLowerCase() : "unknown.testnet";
@@ -145,7 +147,7 @@ export class RimbuxAutonomousAgent {
     arm.call(this.signingBoundary, intentId);
   }
 
-  public async processInstruction(instruction: string): Promise<AgentExecutionResponse> {
+  public async processInstruction(instruction: string, simulationOnly = false): Promise<AgentExecutionResponse> {
     const intent = this.parseNaturalLanguageInstruction(instruction);
 
     this.auditLogger.record(
@@ -287,6 +289,55 @@ export class RimbuxAutonomousAgent {
       };
     }
 
+    if (evaluation.decision === "REQUIRE_APPROVAL" && simulationOnly) {
+      const pendingApproval: PendingApprovalItem = {
+        intent,
+        evaluation,
+        createdAt: Date.now(),
+        simulationOnly: true,
+      };
+
+      this.pendingApprovals.set(intent.intentId, pendingApproval);
+      this.auditPersistence?.savePendingApproval(
+        intent.intentId,
+        pendingApproval,
+        pendingApproval.createdAt
+      );
+
+      const record: TransactionRecord = {
+        intentId: intent.intentId,
+        timestamp: Date.now(),
+        rawInstruction: instruction,
+        recipientId: intent.recipientId,
+        amountNear: intent.amountNear,
+        status: "AWAITING_HUMAN_APPROVAL",
+        policyDecision: "REQUIRE_APPROVAL",
+        riskClassification: evaluation.riskClassification,
+        reasons: evaluation.reasons,
+        reputationScore: reputation.score,
+        scamWarningsCount: scamReport.warnings.length,
+        verificationNote:
+          "Demo approval pending. No signing or broadcast is permitted; spending capacity is reserved until the demo decision.",
+      };
+
+      this.transactionHistory.unshift(record);
+      this.persistTransactionRecord(record);
+      this.auditLogger.record(
+        "DEMO_APPROVAL_REQUIRED",
+        "INFO",
+        { decision: "REQUIRE_APPROVAL", amountNear: intent.amountNear, simulationOnly: true },
+        intent.intentId
+      );
+
+      return {
+        intent,
+        evaluation,
+        transactionRecord: record,
+        agentExplanation:
+          "Human approval required. DEMO ONLY — approval will never sign or broadcast a transaction.",
+      };
+    }
+
     if (evaluation.decision === "REQUIRE_APPROVAL") {
       const pendingApproval: PendingApprovalItem = {
         intent,
@@ -329,7 +380,7 @@ export class RimbuxAutonomousAgent {
     }
 
     // Public read-only demo: evaluate the policy, but never sign or broadcast.
-    if (!this.signingBoundary.getPublicMetadata().publicKey) {
+    if (simulationOnly || !this.signingBoundary.getPublicMetadata().publicKey) {
       await this.spendingController.releaseReservation(spendingCheck.reservationId);
 
       const record: TransactionRecord = {
@@ -424,6 +475,68 @@ export class RimbuxAutonomousAgent {
     };
   }
 
+  public async approveDemoPendingIntent(
+    intentId: string,
+    approve: boolean
+  ): Promise<AgentExecutionResponse> {
+    if (this.approvalInFlight.has(intentId)) {
+      throw new Error(`Approval for intent '${intentId}' is already in progress.`);
+    }
+
+    const pending = this.pendingApprovals.get(intentId);
+    if (!pending || pending.simulationOnly !== true) {
+      throw new Error("DEMO_PENDING_INTENT_NOT_FOUND");
+    }
+
+    this.approvalInFlight.add(intentId);
+    try {
+      const record = this.transactionHistory.find((item) => item.intentId === intentId);
+      if (!record) throw new Error("DEMO_TRANSACTION_RECORD_NOT_FOUND");
+
+      await this.spendingController.releaseReservation(
+        pending.evaluation.spendingCheck.reservationId
+      );
+
+      this.pendingApprovals.delete(intentId);
+      this.auditPersistence?.updatePendingApprovalStatus(
+        intentId,
+        approve ? "APPROVED" : "REJECTED"
+      );
+
+      if (approve) {
+        record.status = "SIMULATED";
+        record.policyDecision = "ALLOW";
+        record.verificationNote =
+          "Demo approval recorded. No signing, broadcast, or spending occurred.";
+      } else {
+        record.status = "BLOCKED_BY_POLICY";
+        record.policyDecision = "BLOCK";
+        record.reasons.push("DEMO_APPROVAL_REJECTED: The demo approval was rejected.");
+        record.verificationNote =
+          "Demo approval rejected. No signing, broadcast, or spending occurred.";
+      }
+
+      this.persistTransactionRecord(record);
+      this.auditLogger.record(
+        approve ? "DEMO_APPROVAL_ACCEPTED" : "DEMO_APPROVAL_REJECTED",
+        "INFO",
+        { intentId, simulationOnly: true, signingSkipped: true, broadcasted: false },
+        intentId
+      );
+
+      return {
+        intent: pending.intent,
+        evaluation: pending.evaluation,
+        transactionRecord: record,
+        agentExplanation: approve
+          ? "Demo approval recorded. SIMULATED ONLY — no transaction was signed or broadcast."
+          : "Demo approval rejected. SIMULATED ONLY — no transaction was signed or broadcast.",
+      };
+    } finally {
+      this.approvalInFlight.delete(intentId);
+    }
+  }
+
   public async approvePendingIntent(intentId: string, approve: boolean): Promise<AgentExecutionResponse> {
     if (this.approvalInFlight.has(intentId)) {
       throw new Error(`Approval for intent '${intentId}' is already in progress.`);
@@ -432,6 +545,9 @@ export class RimbuxAutonomousAgent {
     const pending = this.pendingApprovals.get(intentId);
     if (!pending) {
       throw new Error(`Pending intent '${intentId}' was not found.`);
+    }
+    if (pending.simulationOnly === true) {
+      throw new Error("DEMO_INTENT_REQUIRES_SIMULATION_APPROVAL");
     }
 
     this.approvalInFlight.add(intentId);

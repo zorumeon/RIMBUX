@@ -19,6 +19,14 @@ import {
 dotenv.config();
 
 const app = express();
+
+// Behind a hosting proxy (Render, Railway, Fly) every request arrives from the proxy's IP.
+// Trusting one hop makes req.ip the real client, so the per-IP rate limits below work per user
+// instead of being shared by everyone.
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 app.use(express.json({ limit: "32kb" }));
 
 // Same-origin API only. Read-only GET endpoints remain public.
@@ -27,6 +35,11 @@ app.use("/api", (req, res, next) => {
     return next();
   }
   return requireSameOrigin(req, res, next);
+});
+
+// Lightweight health check for hosting platforms (no RPC calls, no secrets).
+app.get("/healthz", (_req, res) => {
+  res.json({ ok: true });
 });
 
 // Serve the backend-connected dashboard at the root URL (must come before express.static)
@@ -112,13 +125,27 @@ app.get("/api/auth/session", (req, res) => {
   });
 });
 
+// Same shape /api/status returns when no signing key is configured (read-only mode).
+const NO_SIGNING_KEY_CHECK = {
+  verifiedOnChain: false,
+  verificationStatus: "NOT_FOUND" as const,
+  rpcReachable: false,
+  permissionType: "NotFound" as const,
+  receiverId: null,
+  methodNames: [] as string[],
+  allowanceNear: null,
+  error: "READ_ONLY_MODE_NO_SIGNING_KEY",
+};
+
 app.get("/api/public-status", async (_req, res) => {
   try {
     const keyMeta = rimbuxAgent.signingBoundary.getPublicMetadata();
-    const keyCheck = await rimbuxAgent.nearClient.inspectAccessKeyPermissions(
-      rimbuxAgent.nearClient.agentAccountId,
-      keyMeta.publicKey
-    );
+    const keyCheck = keyMeta.publicKey
+      ? await rimbuxAgent.nearClient.inspectAccessKeyPermissions(
+          rimbuxAgent.nearClient.agentAccountId,
+          keyMeta.publicKey
+        )
+      : NO_SIGNING_KEY_CHECK;
 
     return res.json({
       agentStatus: !keyMeta.publicKey ? "READ_ONLY" : keyMeta.revoked ? "REVOKED_LOCKDOWN" : "ACTIVE_GUARDED",
@@ -357,7 +384,7 @@ app.post("/api/policy/update", requireOperator, (req, res) => {
 app.post("/api/sandbox/revoke", requireOperator, (_req, res) => {
   rimbuxAgent.signingBoundary.revokeKey();
   rimbuxAgent.auditLogger.record("SANDBOX_KEY_REVOKED", "CRITICAL", {
-    reason: "Operator memicu pencabutan darurat FunctionCall access key.",
+    reason: "Operator triggered an emergency revocation of the FunctionCall access key.",
   });
   res.json({ sandboxWallet: rimbuxAgent.signingBoundary.getPublicMetadata() });
 });
@@ -445,7 +472,7 @@ app.post("/api/audit/run-suite", async (req, res) => {
 
   // 5. Unknown reputation (Unknown != Malicious -> Require Approval)
   const s5 = await testAgent.processInstruction("Send 0.5 NEAR to unseen-vendor-99.testnet");
-  testAgent.approvePendingIntent(s5.intent.intentId, false);
+  await testAgent.approvePendingIntent(s5.intent.intentId, false);
   results.push({
     id: 5,
     scenario: "Unknown Account Reputation (NEUTRAL_UNKNOWN -> REQUIRE_APPROVAL)",
@@ -535,7 +562,7 @@ app.post("/api/audit/run-suite", async (req, res) => {
     detail: s11Detail,
   });
 
-  // 12. Penandatanganan langsung tanpa token
+  // 12. Direct signing without an authorization token
   let s12Passed = false;
   let s12Detail = "";
   try {

@@ -127,7 +127,19 @@ export const requireSameOrigin: RequestHandler = (req, res, next) => {
   const origin = req.get("origin");
   const host = req.get("host");
 
-  if (!origin || !host) {
+  if (!host) {
+    res.status(403).json({ error: "ORIGIN_CHECK_FAILED" });
+    return;
+  }
+
+  if (!origin) {
+    // Browsers always send Origin on cross-origin POSTs. A request with neither an Origin
+    // header nor any cookie comes from a non-browser client (curl, scripts) and cannot ride
+    // a browser session, so CSRF does not apply. Requests that carry cookies still need Origin.
+    if (!req.headers.cookie) {
+      next();
+      return;
+    }
     res.status(403).json({ error: "ORIGIN_CHECK_FAILED" });
     return;
   }

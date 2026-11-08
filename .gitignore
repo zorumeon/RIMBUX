@@ -39,3 +39,13 @@ public/*.pre-auth-ui
 RIMBUX-CLAUDE-REVIEW.zip
 AI_REVIEW_BRIEF.md
 contracts/rimbux-vault/build/
+
+# local backups
+*.bak
+*.backup-*
+*.before-*
+*.pre-*
+patch-*.py
+*.save
+patch-*.py
+*.save

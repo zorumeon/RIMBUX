@@ -35,7 +35,7 @@ Every decision is saved in a log that shows if anyone tries to change it later.
 
 Open the dashboard and press **Auto-Simulate 5 Scenarios**, or run the full **12 attack tests**. You will watch RIMBUX allow the good payments, pause the risky ones, and stop the attacks, with the reason for each decision.
 
-[![A payment being checked](https://github.com/zorumeon/RIMBUX/raw/main/docs/screenshots/02-payment-flow.png)](https://github.com/zorumeon/RIMBUX/blob/main/docs/screenshots/02-payment-flow.png)
+![The controls dashboard](docs/screenshots/02-controls.png)
 
 ## Try it in 2 minutes (no keys, no login)
 

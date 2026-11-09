@@ -33,11 +33,10 @@ The public dashboard is designed to be explored without operator login. Public-m
 
 Suggested review path:
 
-1. Open **Overview** to understand the wallet guard and its policy.
-2. Open **Agent Wallet** to review the agent-wallet information and verification controls.
-3. Open **Spending** and **Approvals** to inspect spending limits and human-review flow.
-4. Open **Activity** and **Security** to inspect decisions and security information.
-5. Use **Auto-Simulate 5 Scenarios** if shown in the dashboard to see example decisions.
+1. In **Security check**, pick a scenario in the **Threat lab** sidebar (for example *Prompt injection* or *Lookalike address*) and press **Run check**. Watch the four policy gates and the decision.
+2. In the **Rules** section, review the spending limits, the human approval queue, and the agent's limited key. **Check on-chain** reads that key live from NEAR Testnet.
+3. In the **Audit log** section, press **Verify chain**, then **Simulate tampering** to see the tampering detected.
+4. Optional: open **Run all 12 attack tests**. This panel runs a built-in engine in your browser against the default policy. The authoritative suite is `POST /api/audit/run-suite` and the automated tests in step 3 below.
 
 Do not enter a private key or operator password supplied by anyone. Judges do not need either to review public demo mode.
 

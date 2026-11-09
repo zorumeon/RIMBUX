@@ -44,7 +44,7 @@ app.get("/healthz", (_req, res) => {
 
 // Serve the backend-connected dashboard at the root URL (must come before express.static)
 app.get("/", (_req, res) => {
-  res.sendFile(path.join(__dirname, "../public/rimbux_wallet_security_guardian_backend-connected.html"));
+  res.sendFile(path.join(__dirname, "../public/index.html"));
 });
 
 app.use(express.static(path.join(__dirname, "../public")));

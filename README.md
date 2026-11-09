@@ -312,6 +312,24 @@ RIMBUX is a Node server with a SQLite file, so it needs a host that keeps runnin
 - More recipient checks: account age, recent contract changes, past payments between agent and recipient.
 - On-chain key rotation.
 
+## Testnet Transaction Evidence
+
+RIMBUX has been tested with real transactions on NEAR Testnet (test tokens, no monetary value).
+
+| Evidence | Result | NEAR Explorer |
+|---|---|---|
+| Test payment, 0.01 NEAR | FINAL / SuccessValue | [View transaction](https://testnet.nearblocks.io/txns/8Z4eHUx7M2pWG3H7XUgX2QLtym7VZtTtWTi1gDboq6Aq) |
+| Recipient allowlist update | FINAL / SuccessValue | [View transaction](https://testnet.nearblocks.io/txns/DmQCXcZxgt1BT8XJqoYq3JppeJPnk3h8dGHdPvCXGB9R) |
+| Blocked recipient, rejected on-chain | Failed (vault panic, as intended) | [View transaction](https://testnet.nearblocks.io/txns/FN1uHRLPXkNjcBXJDVPzh6ZXNkES6mmPWgDjf54xBym) |
+| Amount over per-transaction cap, rejected on-chain | Failed (vault panic, as intended) | [View transaction](https://testnet.nearblocks.io/txns/CyR5chUxmWYKYoDybF3CGUWVDjytyf68nQFWNsACs85y) |
+
+**Testnet accounts**
+- Vault contract: [`vault.rimbux.testnet`](https://testnet.nearblocks.io/address/vault.rimbux.testnet)
+- Agent: [`agent.rimbux.testnet`](https://testnet.nearblocks.io/address/agent.rimbux.testnet)
+- Owner: `rimbux.testnet`
+
+These links provide on-chain evidence of testnet activity. Public demo actions remain read-only or simulated and do not broadcast transactions.
+
 ## License
 
 Released under the [MIT License](LICENSE).

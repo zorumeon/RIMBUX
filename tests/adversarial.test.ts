@@ -100,8 +100,10 @@ async function runAdversarialSecuritySuite() {
     signingBoundary: mockSigningBoundary,
   });
   let passed = 0;
+  let total = 0;
 
   async function runScenario(name: string, fn: () => Promise<void>) {
+    total++;
     try {
       await fn();
       passed++;
@@ -516,7 +518,7 @@ assert.ok(result.txHash.length > 0);
   assert.strictEqual(auditStatus.intact, true);
 
   console.log(`\n==================================================================`);
-  console.log(`  SECURITY TEST RESULTS: ${passed}/17 SCENARIOS PASSED`);
+  console.log(`  SECURITY TEST RESULTS: ${passed}/${total} SCENARIOS PASSED`);
   console.log(`  SHA-256 AUDIT LOG INTEGRITY: VERIFIED (${auditStatus.totalEntries} entries)`);
   console.log(`==================================================================`);
 }

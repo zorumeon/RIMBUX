@@ -33,7 +33,7 @@ Every decision is saved in a log that shows if anyone tries to change it later.
 
 ## What you will see
 
-Open the dashboard and press **Auto-Simulate 5 Scenarios**, or run the full **12 attack tests**. You will watch RIMBUX allow the good payments, pause the risky ones, and stop the attacks, with the reason for each decision.
+Open the dashboard and pick one of the six scenarios in the **Threat lab** sidebar, then press **Run check**. You can also type your own request, or open **Run all 12 attack tests**. You will watch RIMBUX allow the good payments, pause the risky ones, and stop the attacks, with the reason for each decision. The **Rules** and **Audit log** sections are further down the same page.
 
 ![The controls dashboard](docs/screenshots/02-controls.png)
 
@@ -96,7 +96,7 @@ Every step is written to the audit log.
 
 ## Proof: 12 attack tests, all passing
 
-Run them from the dashboard, or call `POST /api/audit/run-suite`. Each test shows what was expected and what actually happened.
+Run them with `POST /api/audit/run-suite` (the authoritative suite, backed by the real policy engine and `npm test`). Each test shows what was expected and what actually happened. The dashboard's **Run all 12 attack tests** panel is a quicker in-browser check of a different set of 12 attack inputs, run against the default policy; it does not call the backend.
 
 | \# | Attack or situation                      | Expected result                                       |
 |----|------------------------------------------|-------------------------------------------------------|
@@ -139,12 +139,12 @@ The dashboard checks this key directly on NEAR Testnet (read-only) and shows it 
 **Limits you should know**
 
 - The key has a limited gas allowance. When it runs out, the agent can no longer sign, and a new key must be added by the account owner.
-- The emergency **Revoke Key** button stops RIMBUX from using the key, but it does **not** delete the key on NEAR.
+- The **Revoke local signing** button in the Rules section stops RIMBUX from using the key, but it does **not** delete the key on NEAR.
 - On-chain key rotation is not built yet.
 
 ## The audit log
 
-Every decision is saved as a numbered entry. Each entry includes a fingerprint of the one before it, so if someone edits or deletes an old record, the **Verify Chain** button shows that the log was changed.
+Every decision is saved as a numbered entry. Each entry includes a fingerprint of the one before it, so if someone edits or deletes an old record, the **Verify chain** button shows that the log was changed.
 
 This makes the log *tamper-evident*: it cannot stop changes, but it makes them visible.
 

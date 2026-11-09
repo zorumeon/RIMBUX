@@ -8,12 +8,8 @@ Submission for the **NEAR Hackathon 2026, AI Security & Defense track**. Built s
 
 [![RIMBUX dashboard](https://github.com/zorumeon/RIMBUX/raw/main/docs/screenshots/01-overview.png)](https://github.com/zorumeon/RIMBUX/blob/main/docs/screenshots/01-overview.png)
 
-<!--
-Fill these in once deployed, then delete this comment:
-Live dashboard: https://YOUR-DOMAIN
-Demo video:     https://...
-Demo post on X: https://x.com/...
--->
+**Live demo:** https://rhythm-happiness-novels-surgeon.trycloudflare.com
+
 
 ## In 30 seconds
 

@@ -47,7 +47,7 @@ curl -X POST http://localhost:3000/api/demo/instruct \
   -d '{"instruction":"Send 1.2 NEAR to alice.testnet"}'
 ```
 
-The second command runs the 12 attack tests and should report `"passedCount": 12`. In read-only mode, tests 1 and 9 expect `SIMULATED` instead of `SIGNED`, because no key is available to sign with.
+The second command runs the 12 attack tests and should report `"passedCount": 12`. In read-only mode, tests 1 and 9 expect `SIMULATED` instead of `SIGNED`, because no key is available to sign with. The public `run-suite` endpoint allows 3 calls per IP every 5 minutes; if you see `PUBLIC_AUDIT_RATE_LIMITED`, wait a few minutes and try again.
 
 ## How it works
 

@@ -92,7 +92,7 @@ Every step is written to the audit log.
 
 ## Proof: 12 attack tests, all passing
 
-Run them with `POST /api/audit/run-suite` (the authoritative suite, backed by the real policy engine and `npm test`). Each test shows what was expected and what actually happened. The dashboard's **Run all 12 attack tests** panel is a quicker in-browser check of a different set of 12 attack inputs, run against the default policy; it does not call the backend.
+Run them with `POST /api/audit/run-suite` (the authoritative suite, run by the real policy engine on the server). `npm test` runs a wider set of tests: attack scenarios plus audit log, operator session, spending limit and NEAR Sandbox contract tests. Each test shows what was expected and what actually happened. The dashboard's **Run all 12 attack tests** panel is a quicker in-browser check of a different set of 12 attack inputs, run against the default policy; it does not call the backend.
 
 | \# | Attack or situation                      | Expected result                                       |
 |----|------------------------------------------|-------------------------------------------------------|

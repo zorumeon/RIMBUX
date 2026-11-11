@@ -35,7 +35,7 @@ Open the dashboard and pick one of the six scenarios in the **Threat lab** sideb
 
 Without a signing key, RIMBUX starts in **read-only mode**: every payment is simulated, nothing is signed, and the demo endpoints are public. This is the quickest way to check that it works.
 
-After the steps in [Run it yourself](#run-it-yourself), in a second terminal:
+After the setup steps in [Run it yourself](#run-it-yourself) (for this quick path you can skip `npm test` and go straight to `npm run dev`), in a second terminal:
 
 ```
 curl http://localhost:3000/api/status
@@ -156,7 +156,7 @@ This makes the log *tamper-evident*: it cannot stop changes, but it makes them v
 
 ## Run it yourself
 
-You need: Node.js 20 or newer, npm, git, and a NEAR Testnet account name (only needed to read on-chain data; no key is required to try it).
+You need: Node.js 20 or newer (CI runs on Node 22), npm, git, and a NEAR Testnet account name (only needed to read on-chain data; no key is required to try it).
 
 ```
 git clone https://github.com/zorumeon/RIMBUX.git
@@ -191,7 +191,7 @@ npm start
 
 Some actions need an operator login: changing the spending policy, revoking the key, and, when a signing key is configured, sending live instructions and approving payments. The public demo endpoints never need it.
 
-Choose a password and create its hash:
+Choose a password and create its hash. To keep the password out of your shell history, first run `read -rs RIMBUX_PW; export RIMBUX_PW`, then remove the `RIMBUX_PW='choose-a-password'` prefix from the command below:
 
 ```
 RIMBUX_PW='choose-a-password' node -e "const c=require('node:crypto');const s=c.randomBytes(16).toString('hex');console.log(s+':'+c.scryptSync(process.env.RIMBUX_PW,s,64).toString('hex'))"
@@ -289,6 +289,22 @@ RIMBUX is a Node server with a SQLite file, so it needs a host that keeps runnin
 4. Run one instance only: operator sessions are kept in memory.
 5. Check it from outside: `curl -X POST https://YOUR-DOMAIN/api/audit/run-suite` should report `"passedCount": 12`.
 
+## Built during the hackathon
+
+The first commit in this repository is dated 2026-11-01, the first day of NEAR HACKATHON, so there is no pre-hackathon baseline. This is a single, standalone project.
+
+## Built with
+
+- **Backend:** Node.js (>=20), TypeScript, Express 4, near-api-js 5, better-sqlite3, cors, dotenv
+- **Tests:** Node's built-in test runner with ts-node; near-workspaces (NEAR Sandbox) for contract tests
+- **Contract:** `contracts/rimbux-vault` (TypeScript, near-sdk-js 2.0.0)
+- **Dashboard:** single static page (public/index.html) served by the Express server; fonts from Google Fonts, no external JS libraries
+- **AI coding tools:** Claude
+
+## Why NEAR
+
+NEAR access keys can be limited to one contract and one method (FunctionCall keys). RIMBUX uses this to give the agent a key that can only call `execute_agent_payment` on `vault.rimbux.testnet`. Even a fully tricked agent cannot send funds directly, add keys or call anything else.
+
 ## Honest limits
 
 - **"Signed" means signed locally.** It does not mean sent to the network or confirmed.
@@ -296,6 +312,7 @@ RIMBUX is a Node server with a SQLite file, so it needs a host that keeps runnin
 - **Risk scores are signals, not guarantees.** They come from NEAR Testnet RPC data plus a local list, not a network-wide threat feed.
 - **If the testnet RPC is unreachable**, the threat check fails closed and asks a human, so the attack tests that expect an automatic decision will not pass.
 - **The audit log shows tampering; it does not prevent it.**
+- **Public status endpoints.** `/api/status` shows the policy and recent payments without a login. A public deployment should run in read-only mode, with no signing key.
 - **No TEE attestation yet.** This is the next step, to prove the guard's own code has not been changed.
 - **This is a hackathon prototype**, not an audited production wallet.
 

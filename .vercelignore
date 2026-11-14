@@ -1,0 +1,22 @@
+# Files that must never be uploaded by `vercel deploy` from a local checkout.
+# (A .vercelignore replaces .gitignore for CLI uploads, so secrets are listed here explicitly.)
+.env
+.env.*
+!.env.example
+data
+*.sqlite
+*.sqlite-*
+*.pem
+*.key
+.git
+.vercel
+node_modules
+dist
+coverage
+
+# Not needed to build or run the server
+tests
+contracts
+docs
+scripts
+e2e-pay.cjs

@@ -49,3 +49,6 @@ patch-*.py
 *.save
 patch-*.py
 *.save
+
+# Vercel CLI local state
+.vercel/

@@ -1,4 +1,5 @@
 import fs from "fs";
+import os from "os";
 import path from "path";
 import Database from "better-sqlite3";
 import { TransactionRecord } from "../types";
@@ -14,7 +15,22 @@ export interface StoredAuditEvent {
   entry_hash: string;
 }
 
-const dataDirectory = path.resolve(process.cwd(), "data");
+// Where the SQLite file lives:
+//  1. RIMBUX_DATA_DIR, when set (explicit override).
+//  2. On Vercel, the deployment directory is read-only, so use the OS temp dir. It is
+//     writable but NOT durable: data resets when the function instance is recycled.
+//  3. Otherwise ./data, exactly as before.
+function resolveDataDirectory(): string {
+  if (process.env.RIMBUX_DATA_DIR) {
+    return path.resolve(process.env.RIMBUX_DATA_DIR);
+  }
+  if (process.env.VERCEL) {
+    return path.join(os.tmpdir(), "rimbux-data");
+  }
+  return path.resolve(process.cwd(), "data");
+}
+
+const dataDirectory = resolveDataDirectory();
 
 if (!fs.existsSync(dataDirectory)) {
   fs.mkdirSync(dataDirectory, { recursive: true, mode: 0o700 });

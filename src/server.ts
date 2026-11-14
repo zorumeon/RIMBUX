@@ -597,3 +597,7 @@ if (require.main === module) {
     console.log(`[RIMBUX] Cybersecurity Control Center is running at http://localhost:${PORT}`);
   });
 }
+
+// Vercel runs the Express app as a function and needs it as the default export.
+// It does not affect `npm start` or `npm run dev`, which still use app.listen above.
+export default app;
